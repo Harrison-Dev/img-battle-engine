@@ -62,6 +62,9 @@ func main() {
 	r.GET("/", func(c *gin.Context) {
 		c.HTML(http.StatusOK, "index.html", nil)
 	})
+	r.HEAD("/", func(c *gin.Context) {
+		c.Status(http.StatusOK)
+	})
 
 	// GraphQL endpoint
 	r.POST("/graphql", func(c *gin.Context) {
