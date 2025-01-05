@@ -5,6 +5,8 @@ import (
 	"log"
 	"net/http"
 	"path/filepath"
+	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	gql "github.com/graphql-go/graphql"
@@ -18,6 +20,7 @@ import (
 var (
 	globalSearchEngine *search.BleveSearchEngine
 	globalConfig       *config.Config
+	globalFrameProvider *extract.MPEGProvider
 )
 
 func main() {
@@ -47,6 +50,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("Failed to create frame provider: %v", err)
 	}
+	globalFrameProvider = frameProvider
 
 	// 設置GraphQL schema
 	schema, err := apigql.NewSchema(searchEngine)
@@ -87,44 +91,78 @@ func main() {
 		c.JSON(http.StatusOK, result)
 	})
 
-	// 幀提取endpoint
-	r.GET("/frame/:id", func(c *gin.Context) {
-		id := c.Param("id")
-
-		// 在所有集合中查找對應的ID
-		var targetResult *search.SearchResult
-		var collectionName string
-
-		for name, collection := range globalSearchEngine.GetData() {
-			if result, exists := collection[id]; exists {
-				targetResult = &result
-				collectionName = name
-				break
-			}
-		}
-
-		if targetResult == nil {
-			c.JSON(http.StatusNotFound, gin.H{"error": "ID not found"})
-			return
-		}
-
-		// 獲取視頻文件路徑
-		collectionConfig := globalConfig.Collections[collectionName]
-		videoFileName := fmt.Sprintf("%d.mp4", targetResult.Episode)
-		videoPath := filepath.Join(collectionConfig.ContentDir, videoFileName)
-
-		// 提取幀
-		frame, err := frameProvider.ExtractFrame(videoPath, targetResult.StartTime)
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("Failed to extract frame: %v", err)})
-			return
-		}
-
-		c.Data(http.StatusOK, "image/jpeg", frame)
-	})
+	// 幀提取endpoint - 使用單一路由處理所有請求
+	r.GET("/frame/*path", handleFrame)
 
 	log.Printf("Server starting at http://localhost:8080")
 	if err := r.Run(":8080"); err != nil {
 		log.Fatalf("Failed to start server: %v", err)
 	}
+}
+
+// handleFrame 處理幀提取請求
+func handleFrame(c *gin.Context) {
+	// 從路徑參數中提取ID，並去除可能的.jpg後綴和前導斜線
+	path := strings.TrimPrefix(c.Param("path"), "/")
+	id := strings.TrimSuffix(path, ".jpg")
+
+	// 在所有集合中查找對應的ID
+	var targetResult *search.SearchResult
+	var collectionName string
+
+	for name, collection := range globalSearchEngine.GetData() {
+		if result, exists := collection[id]; exists {
+			targetResult = &result
+			collectionName = name
+			break
+		}
+	}
+
+	if targetResult == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "ID not found"})
+		return
+	}
+
+	// 獲取視頻文件路徑
+	collectionConfig := globalConfig.Collections[collectionName]
+	videoFileName := fmt.Sprintf("%d.mp4", targetResult.Episode)
+	videoPath := filepath.Join(collectionConfig.ContentDir, videoFileName)
+
+	// 生成穩定的 ETag
+	etag := fmt.Sprintf("%s-%d-%d", id, targetResult.StartTime, targetResult.Episode)
+	lastModified := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
+	
+	// 檢查 If-None-Match 頭
+	if match := c.GetHeader("If-None-Match"); match == etag {
+		c.Status(http.StatusNotModified)
+		return
+	}
+
+	// 檢查 If-Modified-Since 頭
+	if since := c.GetHeader("If-Modified-Since"); since != "" {
+		if t, err := time.Parse(http.TimeFormat, since); err == nil {
+			if !lastModified.After(t) {
+				c.Status(http.StatusNotModified)
+				return
+			}
+		}
+	}
+
+	// 提取幀
+	frame, err := globalFrameProvider.ExtractFrame(videoPath, targetResult.StartTime)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("Failed to extract frame: %v", err)})
+		return
+	}
+
+	// 設置緩存頭
+	c.Header("Cache-Control", "public, max-age=604800, immutable") // 7天，添加 immutable
+	c.Header("ETag", etag)
+	c.Header("Last-Modified", lastModified.Format(http.TimeFormat))
+	c.Header("Vary", "Accept-Encoding")
+	c.Header("CDN-Cache-Control", "max-age=604800") // 特別告訴 CDN 可以緩存
+	c.Header("Surrogate-Control", "max-age=604800") // 另一種 CDN 緩存控制頭
+	c.Header("Age", "0") // 告訴 CDN 這是新鮮的內容
+
+	c.Data(http.StatusOK, "image/jpeg", frame)
 }
