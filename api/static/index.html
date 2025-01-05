@@ -64,27 +64,60 @@
         }
         .results {
             display: grid;
-            gap: 10px;
+            gap: 20px;
         }
         .result-item {
             background: white;
             padding: 15px;
             border: 1px solid #ddd;
             border-radius: 4px;
+            display: flex;
+            gap: 15px;
+        }
+        .result-info {
+            flex: 1;
+        }
+        .result-image {
+            width: 200px;
+            height: 150px;
+            background: #f0f0f0;
+            border-radius: 4px;
+            overflow: hidden;
+            position: relative;
+            cursor: pointer;
+        }
+        .result-image img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+        .result-image img.loaded {
+            opacity: 1;
+        }
+        .result-image .loading {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: #666;
+            font-size: 14px;
+            z-index: 1;
         }
         .score {
             color: #666;
             font-size: 0.9em;
+            margin: 5px 0;
         }
         .time {
             color: #007bff;
+            margin: 5px 0;
         }
-        .preview-btn {
+        .search-stats {
             margin-top: 10px;
-            background: #28a745;
-        }
-        .preview-btn:hover {
-            background: #218838;
+            font-size: 0.9em;
+            color: #666;
         }
         #preview-modal {
             display: none;
@@ -94,17 +127,17 @@
             width: 100%;
             height: 100%;
             background: rgba(0,0,0,0.8);
+            z-index: 1000;
             justify-content: center;
             align-items: center;
+            cursor: zoom-out;
         }
         #preview-modal img {
             max-width: 90%;
             max-height: 90%;
-        }
-        .search-stats {
-            margin-top: 10px;
-            font-size: 0.9em;
-            color: #666;
+            object-fit: contain;
+            background: white;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.2);
         }
     </style>
 </head>
@@ -129,7 +162,7 @@
         <div id="results" class="results"></div>
     </div>
 
-    <div id="preview-modal" onclick="this.style.display='none'">
+    <div id="preview-modal" onclick="closePreview()">
         <img id="preview-image">
     </div>
 
@@ -194,21 +227,49 @@
                 const div = document.createElement('div');
                 div.className = 'result-item';
                 div.innerHTML = `
-                    <div class="text">${result.text}</div>
-                    <div class="score">相關度: ${result.score.toFixed(2)}</div>
-                    <div class="time">時間: ${result.startTime} - ${result.endTime}</div>
-                    <div>集數: ${result.episode}</div>
-                    <button class="preview-btn" onclick="preview('${result.id}')">預覽圖片</button>
+                    <div class="result-info">
+                        <div class="text">${result.text}</div>
+                        <div class="score">相關度: ${result.score.toFixed(2)}</div>
+                        <div class="time">時間: ${result.startTime} - ${result.endTime}</div>
+                        <div>集數: ${result.episode}</div>
+                    </div>
+                    <div class="result-image" onclick="showPreview('${result.id}')">
+                        <div class="loading">載入中...</div>
+                        <img data-id="${result.id}" onload="imageLoaded(this)">
+                    </div>
                 `;
                 container.appendChild(div);
+                
+                // 異步加載圖片
+                loadImage(result.id);
             });
         }
 
-        function preview(id) {
+        async function loadImage(id) {
+            const img = document.querySelector(`img[data-id="${id}"]`);
+            if (img) {
+                img.src = `/frame/${id}.jpg`;
+            }
+        }
+
+        function imageLoaded(img) {
+            img.classList.add('loaded');
+            // 隱藏載入提示
+            const loadingDiv = img.parentElement.querySelector('.loading');
+            if (loadingDiv) {
+                loadingDiv.style.display = 'none';
+            }
+        }
+
+        function showPreview(id) {
             const modal = document.getElementById('preview-modal');
             const img = document.getElementById('preview-image');
             img.src = `/frame/${id}.jpg`;
             modal.style.display = 'flex';
+        }
+
+        function closePreview() {
+            document.getElementById('preview-modal').style.display = 'none';
         }
 
         // 監聽回車鍵
@@ -223,6 +284,13 @@
             const value = parseInt(e.target.value);
             if (value < 1) e.target.value = 1;
             if (value > 100) e.target.value = 100;
+        });
+
+        // ESC 鍵關閉預覽
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape') {
+                closePreview();
+            }
         });
     </script>
 </body>
