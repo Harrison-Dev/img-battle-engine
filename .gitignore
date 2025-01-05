@@ -28,4 +28,27 @@ config.local.yml
 
 # 系統文件
 .DS_Store
-Thumbs.db 
+Thumbs.db
+
+# Binaries for programs and plugins
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Test binary, built with `go test -c`
+*.test
+
+# Output of the go coverage tool, specifically when used with LiteIDE
+*.out
+
+# Bleve index files
+*.bleve/
+*.bleve.lock
+*.bolt
+*.zap
+
+# Project specific
+contents/
+!contents/.gitkeep 

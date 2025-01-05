@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>圖戰引擎 - 搜索測試</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .search-container {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .search-form {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+        input[type="text"], select, input[type="number"] {
+            padding: 8px 12px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+        input[type="text"] {
+            flex: 1;
+            min-width: 200px;
+        }
+        select {
+            width: 120px;
+        }
+        input[type="number"] {
+            width: 80px;
+        }
+        .form-group {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .form-label {
+            font-size: 14px;
+            color: #666;
+            white-space: nowrap;
+        }
+        button {
+            padding: 8px 16px;
+            background: #007bff;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        button:hover {
+            background: #0056b3;
+        }
+        .results {
+            display: grid;
+            gap: 10px;
+        }
+        .result-item {
+            background: white;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        .score {
+            color: #666;
+            font-size: 0.9em;
+        }
+        .time {
+            color: #007bff;
+        }
+        .preview-btn {
+            margin-top: 10px;
+            background: #28a745;
+        }
+        .preview-btn:hover {
+            background: #218838;
+        }
+        #preview-modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.8);
+            justify-content: center;
+            align-items: center;
+        }
+        #preview-modal img {
+            max-width: 90%;
+            max-height: 90%;
+        }
+        .search-stats {
+            margin-top: 10px;
+            font-size: 0.9em;
+            color: #666;
+        }
+    </style>
+</head>
+<body>
+    <div class="search-container">
+        <h1>圖戰引擎搜索測試</h1>
+        <div class="search-form">
+            <input type="text" id="search-input" placeholder="輸入搜索關鍵詞...">
+            <div class="form-group">
+                <span class="form-label">集合：</span>
+                <select id="collection-select">
+                    <option value="mygo">MyGo</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <span class="form-label">結果數量：</span>
+                <input type="number" id="limit-input" value="10" min="1" max="100">
+            </div>
+            <button onclick="search()">搜索</button>
+        </div>
+        <div class="search-stats" id="search-stats"></div>
+        <div id="results" class="results"></div>
+    </div>
+
+    <div id="preview-modal" onclick="this.style.display='none'">
+        <img id="preview-image">
+    </div>
+
+    <script>
+        async function search() {
+            const query = document.getElementById('search-input').value;
+            const collection = document.getElementById('collection-select').value;
+            const limit = parseInt(document.getElementById('limit-input').value) || 10;
+            
+            // 清空之前的結果
+            document.getElementById('results').innerHTML = '';
+            document.getElementById('search-stats').innerHTML = '搜索中...';
+            
+            try {
+                const response = await fetch('/graphql', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        query: `
+                            query Search($query: String!, $collection: String, $limit: Int) {
+                                search(query: $query, collection: $collection, limit: $limit) {
+                                    id
+                                    score
+                                    text
+                                    episode
+                                    startTime
+                                    endTime
+                                    collection
+                                }
+                            }
+                        `,
+                        variables: {
+                            query,
+                            collection,
+                            limit
+                        }
+                    })
+                });
+
+                const data = await response.json();
+                if (data.errors) {
+                    throw new Error(data.errors[0].message);
+                }
+                
+                const results = data.data.search;
+                displayResults(results);
+                document.getElementById('search-stats').innerHTML = 
+                    `找到 ${results.length} 個結果`;
+            } catch (error) {
+                document.getElementById('search-stats').innerHTML = 
+                    `搜索出錯: ${error.message}`;
+            }
+        }
+
+        function displayResults(results) {
+            const container = document.getElementById('results');
+            container.innerHTML = '';
+
+            results.forEach(result => {
+                const div = document.createElement('div');
+                div.className = 'result-item';
+                div.innerHTML = `
+                    <div class="text">${result.text}</div>
+                    <div class="score">相關度: ${result.score.toFixed(2)}</div>
+                    <div class="time">時間: ${result.startTime} - ${result.endTime}</div>
+                    <div>集數: ${result.episode}</div>
+                    <button class="preview-btn" onclick="preview('${result.id}')">預覽圖片</button>
+                `;
+                container.appendChild(div);
+            });
+        }
+
+        function preview(id) {
+            const modal = document.getElementById('preview-modal');
+            const img = document.getElementById('preview-image');
+            img.src = `/frame/${id}`;
+            modal.style.display = 'flex';
+        }
+
+        // 監聽回車鍵
+        document.getElementById('search-input').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                search();
+            }
+        });
+
+        // 限制數量輸入範圍
+        document.getElementById('limit-input').addEventListener('change', function(e) {
+            const value = parseInt(e.target.value);
+            if (value < 1) e.target.value = 1;
+            if (value > 100) e.target.value = 100;
+        });
+    </script>
+</body>
+</html> 
