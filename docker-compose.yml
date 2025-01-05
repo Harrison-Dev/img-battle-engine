@@ -1,0 +1,27 @@
+version: '3.8'
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: img-battle-engine
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./contents:/app/contents:ro  # 只讀掛載視頻文件
+      - ./tables:/app/tables:ro      # 只讀掛載數據文件
+      - bleve_data:/app/data         # 持久化索引數據
+    environment:
+      - GIN_MODE=release
+      - TZ=Asia/Taipei
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8080"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+volumes:
+  bleve_data:    # 持久化存儲 Bleve 索引數據 

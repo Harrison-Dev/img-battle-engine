@@ -1,0 +1,23 @@
+# Git
+.git
+.gitignore
+
+# IDE
+.idea
+.vscode
+*.swp
+*.swo
+
+# 依賴和構建
+vendor/
+*.bleve/
+
+# 數據文件（將通過 volume 掛載）
+contents/
+tables/*.csv
+
+# 其他
+*.log
+.DS_Store
+README.md
+LICENSE 
