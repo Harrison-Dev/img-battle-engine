@@ -3,6 +3,7 @@ package search
 import (
 	"encoding/csv"
 	"fmt"
+	"io"
 	"os"
 	"strconv"
 
@@ -117,9 +118,27 @@ func (e *BleveSearchEngine) LoadCSV(collection string, csvPath string) error {
 	defer file.Close()
 
 	reader := csv.NewReader(file)
+	// 設置CSV讀取器選項
+	reader.FieldsPerRecord = -1 // 允許變長記錄
+	reader.TrimLeadingSpace = true
+	reader.LazyQuotes = true
+
 	// 跳過標題行
-	if _, err := reader.Read(); err != nil {
+	headers, err := reader.Read()
+	if err != nil {
 		return fmt.Errorf("failed to read CSV header: %v", err)
+	}
+
+	// 驗證必要的列
+	requiredColumns := []string{"id", "text", "episode", "start_time", "end_time", "start_frame", "end_frame"}
+	columnMap := make(map[string]int)
+	for i, header := range headers {
+		columnMap[header] = i
+	}
+	for _, col := range requiredColumns {
+		if _, exists := columnMap[col]; !exists {
+			return fmt.Errorf("required column '%s' not found in CSV", col)
+		}
 	}
 
 	// 確保集合的數據map已初始化
@@ -128,25 +147,71 @@ func (e *BleveSearchEngine) LoadCSV(collection string, csvPath string) error {
 	}
 
 	var results []SearchResult
+	lineNum := 1
 	for {
 		record, err := reader.Read()
+		if err == io.EOF {
+			break
+		}
 		if err != nil {
-			break // EOF或其他錯誤
+			return fmt.Errorf("error reading CSV line %d: %v", lineNum, err)
 		}
 
-		episode, _ := strconv.Atoi(record[3])
+		// 驗證記錄長度
+		if len(record) < len(headers) {
+			return fmt.Errorf("invalid record at line %d: expected %d fields, got %d",
+				lineNum, len(headers), len(record))
+		}
+
+		// 解析episode
+		episode, err := strconv.Atoi(record[columnMap["episode"]])
+		if err != nil {
+			return fmt.Errorf("invalid episode number at line %d: %v", lineNum, err)
+		}
+
+		// 驗證時間格式
+		startTime := record[columnMap["start_time"]]
+		endTime := record[columnMap["end_time"]]
+		if _, err := ParseTimeCode(startTime); err != nil {
+			return fmt.Errorf("invalid start_time at line %d: %v", lineNum, err)
+		}
+		if _, err := ParseTimeCode(endTime); err != nil {
+			return fmt.Errorf("invalid end_time at line %d: %v", lineNum, err)
+		}
+
+		// 驗證幀編號
+		startFrame, err := strconv.Atoi(record[columnMap["start_frame"]])
+		if err != nil {
+			return fmt.Errorf("invalid start_frame at line %d: %v", lineNum, err)
+		}
+		endFrame, err := strconv.Atoi(record[columnMap["end_frame"]])
+		if err != nil {
+			return fmt.Errorf("invalid end_frame at line %d: %v", lineNum, err)
+		}
+
+		// 創建搜索結果
 		result := SearchResult{
-			ID:         record[0],
+			ID:         record[columnMap["id"]],
 			Score:      1.0,
-			Text:       record[2],
+			Text:       record[columnMap["text"]],
 			Episode:    episode,
-			StartTime:  record[4],
-			EndTime:    record[5],
+			StartTime:  startTime,
+			EndTime:    endTime,
 			Collection: collection,
+		}
+
+		// 驗證時間和幀的一致性
+		if startFrame >= endFrame {
+			return fmt.Errorf("invalid frame range at line %d: start_frame >= end_frame", lineNum)
 		}
 
 		results = append(results, result)
 		e.data[collection][result.ID] = result
+		lineNum++
+	}
+
+	if len(results) == 0 {
+		return fmt.Errorf("no valid records found in CSV file")
 	}
 
 	return e.Index(collection, results)
