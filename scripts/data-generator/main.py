@@ -70,6 +70,7 @@ class ImageBattleGenerator:
         print(f"Total frames: {total_frames}")
         
         last_saved_frame = None
+        last_text = None
         frame_count = 0
         saved_count = 0
         
@@ -78,45 +79,33 @@ class ImageBattleGenerator:
             if not ret:
                 break
                 
-            # Process every 5th frame to speed up
-            if frame_count % 5 != 0:
-                frame_count += 1
-                continue
-                
-            # Get timestamp
+            # Calculate timestamp
             timestamp = frame_count / fps
-            
-            # Resize frame for comparison
-            small_frame = cv2.resize(frame, (100, 100))
-            
-            # Skip similar frames
-            if last_saved_frame is not None:
-                similarity = self.compare_frames(small_frame, last_saved_frame)
-                if similarity >= self.similarity_threshold:
-                    frame_count += 1
-                    continue
             
             # Check for subtitle text
             has_text, text = self.has_subtitle_text(frame)
+            
             if has_text:
-                # Save frame
-                frame_path = os.path.join(frames_dir, f'frame_{frame_count:06d}.jpg')
-                cv2.imwrite(frame_path, frame)
-                saved_count += 1
-                
-                # Store frame data with absolute path for storage but relative path for web UI
-                abs_path = os.path.abspath(frame_path)
-                rel_path = os.path.relpath(abs_path, start=self.output_dir)
-                frames_data.append({
-                    'image_path': rel_path,
-                    'series_name': series_name,
-                    'episode': episode,
-                    'timestamp': f'{int(timestamp//60):02d}:{int(timestamp%60):02d}',
-                    'text': text
-                })
-                
-                last_saved_frame = small_frame
-                print(f"Saved frame {frame_count} ({saved_count} total) with text: {text}")
+                # Only process frame if text is different from last saved text
+                if text != last_text:
+                    # Save frame
+                    frame_path = os.path.join(frames_dir, f'frame_{frame_count:06d}.jpg')
+                    cv2.imwrite(frame_path, frame)
+                    saved_count += 1
+                    
+                    # Store frame data with absolute path for storage but relative path for web UI
+                    abs_path = os.path.abspath(frame_path)
+                    rel_path = os.path.relpath(abs_path, start=self.output_dir)
+                    frames_data.append({
+                        'image_path': rel_path,
+                        'series_name': series_name,
+                        'episode': episode,
+                        'timestamp': f'{int(timestamp//60):02d}:{int(timestamp%60):02d}',
+                        'text': text
+                    })
+                    
+                    last_text = text
+                    print(f"Saved frame {frame_count} ({saved_count} total) with text: {text}")
             
             if frame_count % 100 == 0:
                 print(f"Processed {frame_count}/{total_frames} frames ({(frame_count/total_frames)*100:.1f}%)")

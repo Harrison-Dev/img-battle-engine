@@ -10,7 +10,7 @@ def get_you_get_path():
         return os.path.join(venv_dir, 'Scripts', 'you-get.exe')
     return os.path.join(venv_dir, 'bin', 'you-get')
 
-YOU_GET_PATH = get_you_get_path()
+YOU_GET_PATH = "you-get" # already in PATH
 
 def ensure_downloads_dir():
     """Ensure downloads directory exists and return its path."""

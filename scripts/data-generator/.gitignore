@@ -21,8 +21,9 @@ htmlcov/
 # Project-specific
 downloads/
 contents/
-templates/
 static/
+frames/
+*cache/
 *.csv
 
 # IDE specific files
