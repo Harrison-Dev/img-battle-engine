@@ -8,6 +8,7 @@ import pandas as pd
 import threading
 import queue
 import atexit
+import time
 
 app = Flask(__name__)
 
@@ -16,10 +17,15 @@ current_progress = {
     'status': 'idle',
     'frame': None,
     'text': None,
-    'timestamp': None
+    'timestamp': None,
+    'total_frames': 0,
+    'processed_frames': 0
 }
 processing_queue = queue.Queue()
 current_thread = None
+is_paused = False
+processing_event = threading.Event()
+processing_event.set()  # Initially not paused
 
 def cleanup_temp_files():
     """Clean up temporary files and directories."""
@@ -38,42 +44,71 @@ def cleanup_temp_files():
 
 def process_video_async(video_path, frame_skip=1, confidence_threshold=0.6):
     """Process video in a separate thread and update progress."""
-    global current_progress
+    global current_progress, processing_event
     try:
         current_progress['status'] = 'processing'
         
         # Initialize OCR and process video
-        results = process_video(
+        results = []
+        for result in process_video(
             video_path, 
             progress_callback=update_progress, 
             frame_skip=frame_skip,
-            confidence_threshold=confidence_threshold
-        )
+            confidence_threshold=confidence_threshold,
+            pause_event=processing_event
+        ):
+            results.append(result)
+            # Check if processing should be paused
+            processing_event.wait()
+            
+            if current_progress['status'] == 'cancelled':
+                break
         
-        # Save results
-        csv_file = save_results(results, 'ocr_results')
+        if current_progress['status'] != 'cancelled':
+            # Save results
+            csv_file = save_results(results, 'ocr_results')
+            current_progress['status'] = 'completed'
         
-        current_progress['status'] = 'completed'
         return results
     except Exception as e:
         current_progress['status'] = 'error'
         print(f"Error processing video: {str(e)}")
         raise
 
-def update_progress(frame, text, timestamp):
+def update_progress(frame, text, timestamp, total_frames=None, processed_frames=None):
     """Callback function to update processing progress."""
     global current_progress
     current_progress['frame'] = frame
     current_progress['text'] = text
     current_progress['timestamp'] = timestamp
+    if total_frames is not None:
+        current_progress['total_frames'] = total_frames
+    if processed_frames is not None:
+        current_progress['processed_frames'] = processed_frames
 
 @app.route('/')
 def index():
     return render_template('index.html')
 
+@app.route('/pause', methods=['POST'])
+def pause_processing():
+    """Pause the current processing job."""
+    global is_paused, processing_event
+    is_paused = True
+    processing_event.clear()
+    return jsonify({'status': 'paused'})
+
+@app.route('/resume', methods=['POST'])
+def resume_processing():
+    """Resume the current processing job."""
+    global is_paused, processing_event
+    is_paused = False
+    processing_event.set()
+    return jsonify({'status': 'resumed'})
+
 @app.route('/download', methods=['POST'])
 def download():
-    global current_thread
+    global current_thread, current_progress
     
     data = request.json
     url = data.get('url')
@@ -102,6 +137,11 @@ def download():
         
         video_path = os.path.join(downloads_dir, video_files[0])
         
+        # Reset processing state
+        global is_paused, processing_event
+        is_paused = False
+        processing_event.set()
+        
         # Start processing in background thread
         current_thread = threading.Thread(
             target=process_video_async,
@@ -121,16 +161,20 @@ def download():
 @app.route('/cancel', methods=['POST'])
 def cancel_processing():
     """Cancel the current processing job and clean up."""
-    global current_progress, current_thread
+    global current_progress, current_thread, is_paused, processing_event
     
-    current_progress['status'] = 'idle'
+    current_progress['status'] = 'cancelled'
+    is_paused = False
+    processing_event.set()  # Resume if paused to allow clean exit
     cleanup_temp_files()
     
     return jsonify({'status': 'cancelled'})
 
 @app.route('/progress')
 def progress():
-    return jsonify(current_progress)
+    progress_data = current_progress.copy()
+    progress_data['is_paused'] = is_paused
+    return jsonify(progress_data)
 
 @app.route('/frames/<path:filename>')
 def serve_frame(filename):
@@ -143,9 +187,15 @@ def download_csv():
         data = request.json
         deleted_frames = set(data.get('deleted_frames', []))
         modified_texts = data.get('modified_texts', {})
+        current_only = data.get('current_only', False)
         
         # Read the original CSV
         df = pd.read_csv('ocr_results.csv')
+        
+        if current_only:
+            # Only include frames up to the current processed frame
+            max_frame = current_progress.get('processed_frames', 0)
+            df = df[df['start_frame'] <= max_frame]
         
         # Remove deleted frames
         df = df[~df['start_frame'].astype(str).isin(deleted_frames)]

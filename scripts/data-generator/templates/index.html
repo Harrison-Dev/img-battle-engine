@@ -19,6 +19,13 @@
             padding: 10px;
             background: white;
             position: relative;
+            cursor: pointer;
+            transition: transform 0.2s;
+        }
+
+        .frame-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
         }
 
         .frame-card img {
@@ -119,10 +126,89 @@
         .deleted .delete-button {
             display: none;
         }
+
+        .modal-xl {
+            max-width: 90%;
+        }
+
+        .edit-modal-image {
+            max-height: 70vh;
+            width: 100%;
+            object-fit: contain;
+        }
+
+        .processing-controls {
+            margin-top: 10px;
+            display: flex;
+            gap: 10px;
+        }
+
+        .status-badge {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: bold;
+        }
+
+        .status-badge.paused {
+            background: #ffc107;
+            color: #000;
+        }
+
+        .status-badge.processing {
+            background: #0d6efd;
+            color: #fff;
+        }
+
+        .status-badge.completed {
+            background: #198754;
+            color: #fff;
+        }
     </style>
 </head>
 
 <body class="bg-light">
+    <!-- Edit Modal -->
+    <div class="modal fade" id="editModal" tabindex="-1">
+        <div class="modal-dialog modal-xl">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Edit Frame</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="row">
+                        <div class="col-md-8">
+                            <img id="modalImage" class="edit-modal-image mb-3" src="" alt="Frame">
+                            <div class="frame-details mb-3">
+                                <strong>Frame:</strong> <span id="modalFrameNumber"></span><br>
+                                <strong>Time:</strong> <span id="modalTimestamp"></span>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="mb-3">
+                                <label class="form-label">Detected Text:</label>
+                                <textarea id="modalText" class="form-control" rows="4"></textarea>
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label">Confidence Score:</label>
+                                <input type="number" id="modalConfidence" class="form-control" min="0" max="1"
+                                    step="0.1" readonly>
+                            </div>
+                            <div class="d-flex gap-2">
+                                <button class="btn btn-primary" onclick="saveModalChanges()">Save Changes</button>
+                                <button class="btn btn-danger" onclick="deleteModalFrame()">Delete Frame</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <div class="container py-4">
         <div class="row">
             <!-- Form Column -->
@@ -147,8 +233,20 @@
                     </div>
                     <div class="d-flex gap-2">
                         <button type="submit" class="btn btn-primary">Start Processing</button>
+                        <button type="button" class="btn btn-warning" id="pauseButton" style="display: none;">
+                            <i class="bi bi-pause-fill"></i> Pause
+                        </button>
+                        <button type="button" class="btn btn-success" id="resumeButton" style="display: none;">
+                            <i class="bi bi-play-fill"></i> Resume
+                        </button>
                         <button type="button" class="btn btn-danger" id="cancelButton"
                             style="display: none;">Cancel</button>
+                    </div>
+                    <div class="processing-controls">
+                        <div class="progress flex-grow-1" style="display: none;">
+                            <div class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar">
+                            </div>
+                        </div>
                     </div>
                 </form>
 
@@ -166,9 +264,14 @@
                 <!-- Download Section -->
                 <div class="download-section">
                     <h3 class="h5 mb-3">Results</h3>
-                    <button class="btn btn-success" onclick="downloadResults()">
-                        <i class="bi bi-download"></i> Download Results
-                    </button>
+                    <div class="d-flex gap-2">
+                        <button class="btn btn-success" onclick="downloadResults()">
+                            <i class="bi bi-download"></i> Download Results
+                        </button>
+                        <button class="btn btn-primary" onclick="downloadCurrentResults()">
+                            <i class="bi bi-download"></i> Download Current Progress
+                        </button>
+                    </div>
                 </div>
             </div>
 
@@ -181,19 +284,27 @@
         </div>
     </div>
 
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
     <script>
         let isProcessing = false;
+        let isPaused = false;
         let deletedFrames = new Set();
         let modifiedTexts = new Map();
+        let editModal = new bootstrap.Modal(document.getElementById('editModal'));
+        let currentEditFrame = null;
 
-        function addFrameToGallery(frame, text, timestamp) {
+        function addFrameToGallery(frame, text, timestamp, confidence = 0.6) {
             const gallery = document.getElementById('frameGallery');
             const card = document.createElement('div');
             card.className = 'frame-card';
             card.dataset.frame = frame;
+            card.dataset.text = text;
+            card.dataset.timestamp = timestamp;
+            card.dataset.confidence = confidence;
+
             card.innerHTML = `
                 <div class="card-actions">
-                    <button class="btn btn-sm btn-outline-primary edit-button" onclick="editText('${frame}')">
+                    <button class="btn btn-sm btn-outline-primary" onclick="openEditModal('${frame}')">
                         <i class="bi bi-pencil"></i>
                     </button>
                     <button class="btn btn-sm btn-outline-danger delete-button" onclick="deleteFrame('${frame}')">
@@ -203,17 +314,10 @@
                         <i class="bi bi-arrow-counterclockwise"></i>
                     </button>
                 </div>
-                <img src="/frames/${frame}" alt="Frame ${frame}">
+                <img src="/frames/${frame}" alt="Frame ${frame}" onclick="openEditModal('${frame}')">
                 <div class="frame-info">
                     <div class="frame-text" id="text-${frame}">
                         <strong>Text:</strong> ${text || 'No text detected'}
-                    </div>
-                    <div class="text-edit-form" id="edit-${frame}">
-                        <div class="input-group mb-2">
-                            <input type="text" class="form-control" value="${text || ''}" id="input-${frame}">
-                            <button class="btn btn-primary" onclick="saveText('${frame}')">Save</button>
-                            <button class="btn btn-secondary" onclick="cancelEdit('${frame}')">Cancel</button>
-                        </div>
                     </div>
                     <div>
                         <strong>Time:</strong> ${timestamp || '-'}
@@ -226,25 +330,37 @@
             gallery.insertBefore(card, gallery.firstChild);
         }
 
-        function editText(frame) {
+        function openEditModal(frame) {
             const card = document.querySelector(`[data-frame="${frame}"]`);
-            card.classList.add('text-edit-mode');
+            currentEditFrame = frame;
+
+            document.getElementById('modalImage').src = `/frames/${frame}`;
+            document.getElementById('modalText').value = card.dataset.text || '';
+            document.getElementById('modalFrameNumber').textContent = frame;
+            document.getElementById('modalTimestamp').textContent = card.dataset.timestamp;
+            document.getElementById('modalConfidence').value = card.dataset.confidence;
+
+            editModal.show();
         }
 
-        function saveText(frame) {
-            const input = document.getElementById(`input-${frame}`);
-            const textDiv = document.getElementById(`text-${frame}`);
-            const newText = input.value;
+        function saveModalChanges() {
+            if (!currentEditFrame) return;
 
+            const newText = document.getElementById('modalText').value;
+            const textDiv = document.getElementById(`text-${currentEditFrame}`);
             textDiv.innerHTML = `<strong>Text:</strong> ${newText || 'No text detected'}`;
-            modifiedTexts.set(frame, newText);
 
-            cancelEdit(frame);
+            const card = document.querySelector(`[data-frame="${currentEditFrame}"]`);
+            card.dataset.text = newText;
+            modifiedTexts.set(currentEditFrame, newText);
+
+            editModal.hide();
         }
 
-        function cancelEdit(frame) {
-            const card = document.querySelector(`[data-frame="${frame}"]`);
-            card.classList.remove('text-edit-mode');
+        function deleteModalFrame() {
+            if (!currentEditFrame) return;
+            deleteFrame(currentEditFrame);
+            editModal.hide();
         }
 
         function deleteFrame(frame) {
@@ -259,7 +375,7 @@
             deletedFrames.delete(frame);
         }
 
-        async function downloadResults() {
+        async function downloadResults(currentOnly = false) {
             try {
                 const response = await fetch('/download_csv', {
                     method: 'POST',
@@ -268,7 +384,8 @@
                     },
                     body: JSON.stringify({
                         deleted_frames: Array.from(deletedFrames),
-                        modified_texts: Object.fromEntries(modifiedTexts)
+                        modified_texts: Object.fromEntries(modifiedTexts),
+                        current_only: currentOnly
                     }),
                 });
 
@@ -277,7 +394,7 @@
                     const url = window.URL.createObjectURL(blob);
                     const a = document.createElement('a');
                     a.href = url;
-                    a.download = 'ocr_results.csv';
+                    a.download = currentOnly ? 'current_progress.csv' : 'ocr_results.csv';
                     document.body.appendChild(a);
                     a.click();
                     window.URL.revokeObjectURL(url);
@@ -290,6 +407,37 @@
                 alert('Error downloading results');
             }
         }
+
+        function downloadCurrentResults() {
+            downloadResults(true);
+        }
+
+        document.getElementById('pauseButton').onclick = async () => {
+            try {
+                const response = await fetch('/pause', { method: 'POST' });
+                if (response.ok) {
+                    isPaused = true;
+                    document.getElementById('pauseButton').style.display = 'none';
+                    document.getElementById('resumeButton').style.display = 'block';
+                }
+            } catch (error) {
+                console.error('Error pausing:', error);
+            }
+        };
+
+        document.getElementById('resumeButton').onclick = async () => {
+            try {
+                const response = await fetch('/resume', { method: 'POST' });
+                if (response.ok) {
+                    isPaused = false;
+                    document.getElementById('resumeButton').style.display = 'none';
+                    document.getElementById('pauseButton').style.display = 'block';
+                    pollProgress();
+                }
+            } catch (error) {
+                console.error('Error resuming:', error);
+            }
+        };
 
         document.getElementById('processForm').onsubmit = async (e) => {
             e.preventDefault();

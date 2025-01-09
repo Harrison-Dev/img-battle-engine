@@ -142,8 +142,16 @@ def remove_duplicates(results):
     unique_results.sort(key=lambda x: int(x['frame'].split('_')[1].split('.')[0]))
     return unique_results
 
-def process_video(video_path, progress_callback=None, frame_skip=1, confidence_threshold=0.6):
-    """Process video and perform OCR on extracted frames."""
+def process_video(video_path, progress_callback=None, frame_skip=1, confidence_threshold=0.6, pause_event=None):
+    """Process video and perform OCR on extracted frames.
+    
+    Args:
+        video_path: Path to the video file
+        progress_callback: Optional callback function for progress updates
+        frame_skip: Number of frames to skip between processing (default: 1, no skip)
+        confidence_threshold: Minimum confidence score for text detection (default: 0.6)
+        pause_event: Threading event for pause/resume functionality
+    """
     # Initialize OCR readers
     ch_reader, ja_reader = init_readers()
     
@@ -172,7 +180,6 @@ def process_video(video_path, progress_callback=None, frame_skip=1, confidence_t
     os.makedirs(frames_dir, exist_ok=True)
     
     # Process frames
-    results = []
     seen_texts = set()  # Track unique texts
     last_text = None
     last_text_frame = 0
@@ -184,6 +191,10 @@ def process_video(video_path, progress_callback=None, frame_skip=1, confidence_t
         torch.cuda.empty_cache()  # Clear GPU cache before processing
     
     while True:
+        # Check for pause if event is provided
+        if pause_event:
+            pause_event.wait()
+            
         ret, frame = cap.read()
         if not ret:
             break
@@ -242,7 +253,6 @@ def process_video(video_path, progress_callback=None, frame_skip=1, confidence_t
                             'timestamp': timestamp,
                             'texts': texts
                         }
-                        results.append(frame_result)
                         
                         # Update tracking variables
                         last_text = best_text['text']
@@ -254,11 +264,16 @@ def process_video(video_path, progress_callback=None, frame_skip=1, confidence_t
                             progress_callback(
                                 frame=os.path.basename(frame_path),
                                 text=best_text['text'],
-                                timestamp=timestamp
+                                timestamp=timestamp,
+                                total_frames=total_frames,
+                                processed_frames=frame_count
                             )
                         
                         print(f"\nFrame: {os.path.basename(frame_path)} ({timestamp:.1f}s)")
                         print(f"Text detected ({best_text['lang']}): {best_text['text']} (confidence: {best_text['confidence']:.2f})")
+                        
+                        # Yield result instead of collecting
+                        yield frame_result
                 
                 # Periodically clear GPU cache to prevent memory buildup
                 if frame_count % 100 == 0 and torch.cuda.is_available():
@@ -270,6 +285,14 @@ def process_video(video_path, progress_callback=None, frame_skip=1, confidence_t
         
         if frame_count % 100 == 0:
             print(f"Processed {frame_count}/{total_frames} frames ({(frame_count/total_frames)*100:.1f}%)")
+            if progress_callback:
+                progress_callback(
+                    frame=None,
+                    text=None,
+                    timestamp=None,
+                    total_frames=total_frames,
+                    processed_frames=frame_count
+                )
         
         frame_count += 1
     
@@ -278,8 +301,6 @@ def process_video(video_path, progress_callback=None, frame_skip=1, confidence_t
     # Final GPU cleanup
     if torch.cuda.is_available():
         torch.cuda.empty_cache()
-    
-    return results
 
 def save_results(results, base_filename):
     """Save results in CSV format with required fields."""
