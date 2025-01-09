@@ -10,36 +10,76 @@ import uuid
 
 def init_readers():
     """Initialize EasyOCR readers with GPU if available."""
-    gpu = torch.cuda.is_available()
-    print(f"GPU available: {gpu}")
-    if gpu:
-        print(f"CUDA Device: {torch.cuda.get_device_name(0)}")
+    try:
+        # Force CUDA initialization
+        if not torch.cuda.is_available():
+            print("CUDA is not available. Running on CPU.")
+            return init_readers_cpu()
+            
+        # Initialize CUDA
+        torch.cuda.init()
+        current_device = torch.cuda.current_device()
+        torch.cuda.set_device(current_device)
+        
+        print(f"GPU available: True")
+        print(f"CUDA Device: {torch.cuda.get_device_name(current_device)}")
         print(f"CUDA Version: {torch.version.cuda}")
-        # Set CUDA device
-        torch.cuda.set_device(0)
-    
-    # Create readers with CUDA configuration
+        print(f"Current CUDA device: {current_device}")
+        print(f"Device capability: {torch.cuda.get_device_capability(current_device)}")
+        print(f"Memory allocated: {torch.cuda.memory_allocated(current_device) / 1024**2:.2f} MB")
+        print(f"Memory cached: {torch.cuda.memory_reserved(current_device) / 1024**2:.2f} MB")
+        
+        # Configure PyTorch for better performance
+        torch.backends.cudnn.benchmark = True
+        torch.backends.cudnn.enabled = True
+        torch.backends.cuda.matmul.allow_tf32 = True
+        torch.backends.cudnn.allow_tf32 = True
+        
+        # Create readers with CUDA configuration
+        reader_config = {
+            'gpu': True,
+            'model_storage_directory': os.path.join(os.path.dirname(__file__), 'model_cache'),
+            'download_enabled': True,
+            'detector': True,
+            'recognizer': True,
+            'verbose': False,
+            'cudnn_benchmark': True
+        }
+        
+        # Create two readers: one for Traditional Chinese + English, another for Japanese + English
+        with torch.cuda.device(current_device):
+            ch_reader = easyocr.Reader(['ch_tra', 'en'], **reader_config)
+            ja_reader = easyocr.Reader(['ja', 'en'], **reader_config)
+            
+            # Warm up the models with a dummy image
+            dummy_image = np.zeros((100, 100, 3), dtype=np.uint8)
+            torch.cuda.empty_cache()  # Clear GPU cache before warmup
+            ch_reader.readtext(dummy_image)
+            ja_reader.readtext(dummy_image)
+            torch.cuda.empty_cache()  # Clear GPU cache after warmup
+            
+        print("GPU initialization completed successfully")
+        return ch_reader, ja_reader
+        
+    except Exception as e:
+        print(f"Error initializing GPU: {str(e)}")
+        print("Falling back to CPU mode")
+        return init_readers_cpu()
+
+def init_readers_cpu():
+    """Initialize EasyOCR readers in CPU mode."""
+    print("Initializing readers in CPU mode")
     reader_config = {
-        'gpu': gpu,
+        'gpu': False,
         'model_storage_directory': os.path.join(os.path.dirname(__file__), 'model_cache'),
         'download_enabled': True,
-        'detector': True,  # Use text detector
-        'recognizer': True,  # Use text recognizer
-        'verbose': False,  # Reduce console output
-        'cudnn_benchmark': True,  # Enable cuDNN benchmarking for better performance
+        'detector': True,
+        'recognizer': True,
+        'verbose': False
     }
     
-    # Create two readers: one for Traditional Chinese + English, another for Japanese + English
     ch_reader = easyocr.Reader(['ch_tra', 'en'], **reader_config)
     ja_reader = easyocr.Reader(['ja', 'en'], **reader_config)
-    
-    # Warm up the models with a dummy image
-    if gpu:
-        dummy_image = np.zeros((100, 100, 3), dtype=np.uint8)
-        ch_reader.readtext(dummy_image)
-        ja_reader.readtext(dummy_image)
-        torch.cuda.empty_cache()  # Clear GPU cache after warmup
-    
     return ch_reader, ja_reader
 
 def crop_subtitle_region(image):
@@ -143,22 +183,18 @@ def remove_duplicates(results):
     return unique_results
 
 def process_video(video_path, progress_callback=None, frame_skip=1, confidence_threshold=0.6, pause_event=None):
-    """Process video and perform OCR on extracted frames.
-    
-    Args:
-        video_path: Path to the video file
-        progress_callback: Optional callback function for progress updates
-        frame_skip: Number of frames to skip between processing (default: 1, no skip)
-        confidence_threshold: Minimum confidence score for text detection (default: 0.6)
-        pause_event: Threading event for pause/resume functionality
-    """
-    # Initialize OCR readers
+    """Process video and perform OCR on extracted frames."""
+    # Initialize OCR readers with GPU support
     ch_reader, ja_reader = init_readers()
     
-    # Enable CUDA optimization
+    # Enable CUDA optimization if available
     if torch.cuda.is_available():
-        torch.backends.cudnn.benchmark = True
-        torch.backends.cudnn.enabled = True
+        current_device = torch.cuda.current_device()
+        with torch.cuda.device(current_device):
+            torch.cuda.empty_cache()  # Clear GPU cache before processing
+            torch.backends.cudnn.benchmark = True
+            torch.backends.cudnn.enabled = True
+            print(f"Processing with CUDA device: {torch.cuda.get_device_name(current_device)}")
     
     # Open video
     cap = cv2.VideoCapture(video_path)
@@ -186,121 +222,120 @@ def process_video(video_path, progress_callback=None, frame_skip=1, confidence_t
     frame_count = 0
     min_text_duration = 0.5  # Minimum duration (in seconds) to consider text as new
     
-    # Pre-allocate memory for frame processing
-    if torch.cuda.is_available():
-        torch.cuda.empty_cache()  # Clear GPU cache before processing
-    
-    while True:
-        # Check for pause if event is provided
-        if pause_event:
-            pause_event.wait()
-            
-        ret, frame = cap.read()
-        if not ret:
-            break
-        
-        # Skip frames according to frame_skip parameter
-        if frame_count % frame_skip != 0:
-            frame_count += 1
-            continue
-        
-        timestamp = frame_count / fps
-        
-        # Only process frame if enough time has passed since last detected text
-        if frame_count - last_text_frame > fps * min_text_duration:
-            # Crop and process subtitle region
-            subtitle_region = crop_subtitle_region(frame)
-            
-            try:
-                # Try Chinese OCR first
-                ch_results = ch_reader.readtext(subtitle_region)
-                texts = []
+    try:
+        while True:
+            # Check for pause if event is provided
+            if pause_event:
+                pause_event.wait()
                 
-                # Process Chinese results
-                for (bbox, text, prob) in ch_results:
-                    if prob > confidence_threshold:
-                        texts.append({
-                            'text': text,
-                            'confidence': prob,
-                            'bbox': bbox,
-                            'lang': 'ch_tra'
-                        })
+            ret, frame = cap.read()
+            if not ret:
+                break
+            
+            # Skip frames according to frame_skip parameter
+            if frame_count % frame_skip != 0:
+                frame_count += 1
+                continue
+            
+            timestamp = frame_count / fps
+            
+            # Only process frame if enough time has passed since last detected text
+            if frame_count - last_text_frame > fps * min_text_duration:
+                # Crop and process subtitle region
+                subtitle_region = crop_subtitle_region(frame)
                 
-                # If no good Chinese results, try Japanese
-                if not texts:
-                    ja_results = ja_reader.readtext(subtitle_region)
-                    for (bbox, text, prob) in ja_results:
+                try:
+                    # Try Chinese OCR first
+                    ch_results = ch_reader.readtext(subtitle_region)
+                    texts = []
+                    
+                    # Process Chinese results
+                    for (bbox, text, prob) in ch_results:
                         if prob > confidence_threshold:
                             texts.append({
                                 'text': text,
                                 'confidence': prob,
                                 'bbox': bbox,
-                                'lang': 'ja'
+                                'lang': 'ch_tra'
                             })
-                
-                if texts:
-                    # Get highest confidence text
-                    best_text = max(texts, key=lambda x: x['confidence'])
                     
-                    # Only process if text is different from last one
-                    if best_text['text'] != last_text:
-                        # Save full frame
-                        frame_path = os.path.join(frames_dir, f'frame_{frame_count:06d}.jpg')
-                        cv2.imwrite(frame_path, frame)  # Save full frame for context
-                        
-                        frame_result = {
-                            'frame': os.path.basename(frame_path),
-                            'timestamp': timestamp,
-                            'texts': texts
-                        }
-                        
-                        # Update tracking variables
-                        last_text = best_text['text']
-                        last_text_frame = frame_count
-                        seen_texts.add(last_text)
-                        
-                        # Update progress if callback provided
-                        if progress_callback:
-                            progress_callback(
-                                frame=os.path.basename(frame_path),
-                                text=best_text['text'],
-                                timestamp=timestamp,
-                                total_frames=total_frames,
-                                processed_frames=frame_count
-                            )
-                        
-                        print(f"\nFrame: {os.path.basename(frame_path)} ({timestamp:.1f}s)")
-                        print(f"Text detected ({best_text['lang']}): {best_text['text']} (confidence: {best_text['confidence']:.2f})")
-                        
-                        # Yield result instead of collecting
-                        yield frame_result
-                
-                # Periodically clear GPU cache to prevent memory buildup
-                if frame_count % 100 == 0 and torch.cuda.is_available():
-                    torch.cuda.empty_cache()
+                    # If no good Chinese results, try Japanese
+                    if not texts:
+                        ja_results = ja_reader.readtext(subtitle_region)
+                        for (bbox, text, prob) in ja_results:
+                            if prob > confidence_threshold:
+                                texts.append({
+                                    'text': text,
+                                    'confidence': prob,
+                                    'bbox': bbox,
+                                    'lang': 'ja'
+                                })
                     
-            except Exception as e:
-                print(f"Error processing frame {frame_count}: {str(e)}")
-                continue
-        
-        if frame_count % 100 == 0:
-            print(f"Processed {frame_count}/{total_frames} frames ({(frame_count/total_frames)*100:.1f}%)")
-            if progress_callback:
-                progress_callback(
-                    frame=None,
-                    text=None,
-                    timestamp=None,
-                    total_frames=total_frames,
-                    processed_frames=frame_count
-                )
-        
-        frame_count += 1
-    
-    cap.release()
-    
-    # Final GPU cleanup
-    if torch.cuda.is_available():
-        torch.cuda.empty_cache()
+                    if texts:
+                        # Get highest confidence text
+                        best_text = max(texts, key=lambda x: x['confidence'])
+                        
+                        # Only process if text is different from last one
+                        if best_text['text'] != last_text:
+                            # Save full frame
+                            frame_path = os.path.join(frames_dir, f'frame_{frame_count:06d}.jpg')
+                            cv2.imwrite(frame_path, frame)  # Save full frame for context
+                            
+                            frame_result = {
+                                'frame': os.path.basename(frame_path),
+                                'timestamp': timestamp,
+                                'texts': texts
+                            }
+                            
+                            # Update tracking variables
+                            last_text = best_text['text']
+                            last_text_frame = frame_count
+                            seen_texts.add(last_text)
+                            
+                            # Update progress if callback provided
+                            if progress_callback:
+                                progress_callback(
+                                    frame=os.path.basename(frame_path),
+                                    text=best_text['text'],
+                                    timestamp=timestamp,
+                                    total_frames=total_frames,
+                                    processed_frames=frame_count
+                                )
+                            
+                            print(f"\nFrame: {os.path.basename(frame_path)} ({timestamp:.1f}s)")
+                            print(f"Text detected ({best_text['lang']}): {best_text['text']} (confidence: {best_text['confidence']:.2f})")
+                            
+                            # Yield result instead of collecting
+                            yield frame_result
+                    
+                    # Periodically clear GPU cache to prevent memory buildup
+                    if frame_count % 100 == 0 and torch.cuda.is_available():
+                        with torch.cuda.device(current_device):
+                            torch.cuda.empty_cache()
+                        
+                except Exception as e:
+                    print(f"Error processing frame {frame_count}: {str(e)}")
+                    continue
+            
+            if frame_count % 100 == 0:
+                print(f"Processed {frame_count}/{total_frames} frames ({(frame_count/total_frames)*100:.1f}%)")
+                if progress_callback:
+                    progress_callback(
+                        frame=None,
+                        text=None,
+                        timestamp=None,
+                        total_frames=total_frames,
+                        processed_frames=frame_count
+                    )
+            
+            frame_count += 1
+            
+    finally:
+        cap.release()
+        # Final GPU cleanup
+        if torch.cuda.is_available():
+            with torch.cuda.device(current_device):
+                torch.cuda.empty_cache()
 
 def save_results(results, base_filename):
     """Save results in CSV format with required fields."""
