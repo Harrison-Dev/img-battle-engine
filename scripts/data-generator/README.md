@@ -4,33 +4,35 @@ A tool to generate image data from videos for image battles.
 
 ## Features
 
-1. **Video Download**
+1. **Video Processing**
    - Download videos from YouTube (single video or playlist)
-   - Organize downloads into series-specific folders
-   - Supports both single video links and playlist URLs
+   - Automatic frame extraction with configurable skip rate
+   - Intelligent subtitle region detection (bottom 30% of frame)
+   - Real-time processing with pause/resume capability
 
-2. **Frame Extraction**
-   - Intelligent frame extraction from videos
-   - Removes similar/duplicate frames
-   - Configurable similarity threshold
-   - Maintains high-quality frame output
+2. **OCR Processing**
+   - Supports Traditional Chinese and Japanese text detection
+   - GPU acceleration with CUDA (if available)
+   - Configurable confidence threshold
+   - Automatic text filtering and deduplication
 
-3. **Text Detection**
-   - OCR processing for subtitle detection
-   - Supports Traditional Chinese text
-   - Filters frames based on text presence
-   - Uses EasyOCR for text detection
+3. **Web Interface**
+   - Modern, user-friendly web UI
+   - Real-time processing status and preview
+   - Interactive frame gallery with edit capabilities
+   - Progress tracking and control features
 
-4. **Data Organization**
-   - Generates CSV file in the required format
-   - Compatible with existing battle system
-   - Includes metadata and frame information
+4. **Frame Management**
+   - Edit detected text for individual frames
+   - Delete/restore unwanted frames
+   - Preview frames in full size
+   - Batch operations support
 
-5. **Web Interface**
-   - Easy-to-use web UI for job submission
-   - Real-time job status monitoring
-   - Progress tracking for long-running tasks
-   - No command line knowledge required
+5. **Export Features**
+   - CSV export with custom filename
+   - Progress-aware downloads
+   - Support for partial exports
+   - File save dialog with custom location
 
 ## Setup
 
@@ -45,36 +47,79 @@ source venv/Scripts/activate  # Windows
 pip install -r requirements.txt
 ```
 
+## System Requirements
+
+- Python 3.8 or higher
+- CUDA-capable GPU (optional, for faster processing)
+- Modern web browser
+- Sufficient disk space for video processing
+
 ## Usage
 
-### Web Interface (Recommended)
+### Web Interface
 1. Start the web server:
 ```bash
+cd scripts/data-generator
 python web_ui.py
 ```
-2. Open your browser and go to `http://localhost:5000`
-3. Fill in the form with:
-   - YouTube URL (video or playlist)
-   - Series name
-   - Optional: similarity threshold and output directory
-4. Click "Start Processing" and monitor the progress
 
-### Command Line
-```bash
-python main.py --url <youtube_url> --series <series_name>
-```
+2. Access the interface:
+   - Open browser and go to `http://localhost:5000`
+   - Enter video URL
+   - Configure processing options:
+     - Frame Skip Rate (1-30)
+     - Confidence Threshold (0.1-1.0)
 
-Optional arguments:
-- `--url`: YouTube video or playlist URL
-- `--series`: Name of the series (for folder organization)
-- `--threshold`: Similarity threshold for frame comparison (default: 0.4)
-- `--output`: Custom output directory
+3. Processing Controls:
+   - Start/Stop processing
+   - Pause/Resume capability
+   - Real-time preview of current frame
+   - Progress monitoring
+
+4. Frame Management:
+   - View extracted frames in gallery
+   - Edit detected text
+   - Delete unwanted frames
+   - Restore deleted frames
+   - Preview frames in full size
+
+5. Export Results:
+   - Download complete results
+   - Option to download current progress only
+   - Custom filename with timestamp
+   - Progress tracking during download
 
 ## Output Format
 
-The generated CSV will follow this structure:
-- image_path
-- series_name
-- episode
-- timestamp
-- detected_text 
+The generated CSV contains:
+- id: Unique identifier for each entry
+- score: Confidence score of OCR detection
+- text: Detected text content
+- episode: Episode number
+- start_time: Timestamp in format MM:SS,mmm
+- end_time: End timestamp
+- start_frame: Starting frame number
+- end_frame: Ending frame number
+
+## File Structure
+```
+scripts/data-generator/
+├── web_ui.py         # Web interface server
+├── video_ocr.py      # OCR processing core
+├── source_dl.py      # Video download handler
+├── main.py           # Command line interface
+├── requirements.txt  # Project dependencies
+├── templates/        # Web interface templates
+├── static/          # Static web resources
+├── frames/          # Extracted frame storage
+├── downloads/       # Downloaded video storage
+└── model_cache/     # OCR model cache
+```
+
+## Notes
+
+- Frame skip rate affects processing speed and output density
+- Higher confidence threshold means more accurate but fewer results
+- GPU acceleration is automatic if CUDA is available
+- Temporary files are automatically cleaned up
+- Progress can be saved at any point during processing 

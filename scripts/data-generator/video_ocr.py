@@ -182,7 +182,7 @@ def remove_duplicates(results):
     unique_results.sort(key=lambda x: int(x['frame'].split('_')[1].split('.')[0]))
     return unique_results
 
-def process_video(video_path, progress_callback=None, frame_skip=1, confidence_threshold=0.6, pause_event=None):
+def process_video(video_path, progress_callback=None, frame_skip=1, confidence_threshold=0.6, pause_event=None, start_frame=0):
     """Process video and perform OCR on extracted frames."""
     # Initialize OCR readers with GPU support
     ch_reader, ja_reader = init_readers()
@@ -210,10 +210,7 @@ def process_video(video_path, progress_callback=None, frame_skip=1, confidence_t
     print(f"Duration: {duration:.2f} seconds")
     print(f"Frame skip: {frame_skip}")
     print(f"Confidence threshold: {confidence_threshold}")
-    
-    # Create frames directory if needed
-    frames_dir = 'frames'
-    os.makedirs(frames_dir, exist_ok=True)
+    print(f"Starting from frame: {start_frame}")
     
     # Process frames
     seen_texts = set()  # Track unique texts
@@ -223,6 +220,12 @@ def process_video(video_path, progress_callback=None, frame_skip=1, confidence_t
     min_text_duration = 0.5  # Minimum duration (in seconds) to consider text as new
     
     try:
+        # Skip to start frame if needed
+        if start_frame > 0:
+            print(f"Skipping to frame {start_frame}")
+            cap.set(cv2.CAP_PROP_POS_FRAMES, start_frame)
+            frame_count = start_frame
+        
         while True:
             # Check for pause if event is provided
             if pause_event:
@@ -278,7 +281,7 @@ def process_video(video_path, progress_callback=None, frame_skip=1, confidence_t
                         # Only process if text is different from last one
                         if best_text['text'] != last_text:
                             # Save full frame
-                            frame_path = os.path.join(frames_dir, f'frame_{frame_count:06d}.jpg')
+                            frame_path = os.path.join('frames', f'frame_{frame_count:06d}.jpg')
                             cv2.imwrite(frame_path, frame)  # Save full frame for context
                             
                             frame_result = {
