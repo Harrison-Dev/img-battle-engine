@@ -216,3 +216,41 @@ class Storage:
             ''', (youtube_id,))
             
             conn.commit() 
+    
+    def get_new_frames(self, youtube_id, last_frame_number=None):
+        """Get new frames since the last frame number."""
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                query = """
+                    SELECT frame_number, text, modified_text, timestamp, confidence, is_deleted
+                    FROM frames
+                    WHERE youtube_id = ?
+                """
+                params = [youtube_id]
+                
+                if last_frame_number:
+                    # Extract frame number from the format 'frame_XXXXXX.jpg'
+                    try:
+                        last_number = int(last_frame_number.split('_')[1].split('.')[0])
+                        query += " AND CAST(SUBSTR(frame_number, 7, 6) AS INTEGER) > ?"
+                        params.append(last_number)
+                    except (IndexError, ValueError):
+                        pass
+                
+                query += " ORDER BY CAST(SUBSTR(frame_number, 7, 6) AS INTEGER)"
+                
+                cursor = conn.execute(query, params)
+                frames = []
+                for row in cursor:
+                    frames.append({
+                        'frame_number': row[0],
+                        'text': row[1],
+                        'modified_text': row[2],
+                        'timestamp': row[3],
+                        'confidence': row[4],
+                        'is_deleted': bool(row[5])
+                    })
+                return frames
+        except Exception as e:
+            print(f"Error getting new frames: {str(e)}")
+            return [] 

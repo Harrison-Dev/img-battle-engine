@@ -179,10 +179,18 @@ def extract_frames_ffmpeg(video_path, frames_info, output_dir='frames', scale_wi
             '-show_streams'
         ], capture_output=True, encoding='utf-8')
         
-        print(f"Found {len(frames_info)} frames to extract")
+        total_frames = len(frames_info)
+        print(f"Found {total_frames} frames to extract")
+        
+        # Update progress for extraction start
+        current_progress.update({
+            'status': 'extracting',
+            'total_frames': total_frames,
+            'processed_frames': 0
+        })
         
         # Extract frames using ffmpeg
-        for frame_info in frames_info:
+        for i, frame_info in enumerate(frames_info, 1):
             frame_number = frame_info['frame_number']
             timestamp = frame_info['timestamp']
             
@@ -208,6 +216,14 @@ def extract_frames_ffmpeg(video_path, frames_info, output_dir='frames', scale_wi
                 if result.returncode != 0:
                     print(f"FFmpeg error for frame {frame_number}:")
                     print(f"Command error: {result.stderr}")
+                else:
+                    # Update progress for each extracted frame
+                    current_progress.update({
+                        'frame': frame_number,
+                        'processed_frames': i,
+                        'text': f'Extracting frame {i}/{total_frames}',
+                        'timestamp': timestamp
+                    })
             except Exception as e:
                 print(f"Error extracting frame {frame_number}: {str(e)}")
                 continue
@@ -266,6 +282,7 @@ def download():
             
             # Download video first
             print("Downloading video...")
+            current_progress['status'] = 'downloading'
             download_video(url)
             
             # Get downloaded video path
@@ -280,6 +297,7 @@ def download():
             
             # Extract frames using ffmpeg
             print("Extracting frames...")
+            current_progress['status'] = 'extracting'
             if extract_frames_ffmpeg(video_path, existing_job['frames']):
                 print("Frame extraction completed successfully")
                 # Restore previous state
@@ -301,11 +319,12 @@ def download():
                     kwargs={
                         'frame_skip': existing_job['job']['frame_skip'],
                         'confidence_threshold': existing_job['job']['confidence_threshold'],
-                        'start_frame': existing_job['job']['current_frame']  # Pass the last processed frame
+                        'start_frame': existing_job['job']['current_frame']
                     }
                 )
                 current_thread.start()
                 
+                # Return existing frames immediately for instant display
                 return jsonify({
                     'status': 'restored',
                     'progress': current_progress,
@@ -314,6 +333,14 @@ def download():
             else:
                 print("Frame extraction failed")
                 return jsonify({'error': 'Failed to restore frames'}), 500
+        elif existing_job and existing_job['job']['status'] == 'completed':
+            print(f"Found completed job for URL: {url}")
+            # For completed jobs, just return the existing frames without reprocessing
+            return jsonify({
+                'status': 'completed',
+                'progress': existing_job['job'],
+                'frames': existing_job['frames']
+            })
         
         # Clean up any existing files
         cleanup_temp_files()
@@ -391,8 +418,17 @@ def update_frame():
 
 @app.route('/progress')
 def progress():
+    """Get current progress and any new frames since last check."""
+    last_frame_number = request.args.get('last_frame', None)
     progress_data = current_progress.copy()
     progress_data['is_paused'] = is_paused
+    
+    # If we have a current URL, get any new frames since last check
+    if 'current_url' in current_progress:
+        youtube_id = storage.extract_youtube_id(current_progress['current_url'])
+        new_frames = storage.get_new_frames(youtube_id, last_frame_number)
+        progress_data['new_frames'] = new_frames
+    
     return jsonify(progress_data)
 
 @app.route('/frames/<path:filename>')
