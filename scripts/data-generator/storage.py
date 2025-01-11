@@ -2,6 +2,7 @@ import sqlite3
 import json
 from datetime import datetime
 import os
+from id_generator import generate_frame_id
 
 class Storage:
     def __init__(self, db_path='processing_state.db'):
@@ -30,10 +31,13 @@ class Storage:
                 )
             ''')
             
-            # Create frames table
+            # Drop existing frames table if exists
+            cursor.execute('DROP TABLE IF EXISTS frames')
+            
+            # Create frames table with TEXT id
             cursor.execute('''
                 CREATE TABLE IF NOT EXISTS frames (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    id TEXT PRIMARY KEY,
                     youtube_id TEXT NOT NULL,
                     frame_number TEXT NOT NULL,
                     text TEXT,
@@ -49,13 +53,13 @@ class Storage:
             conn.commit()
     
     def extract_youtube_id(self, url):
-        """Extract YouTube video ID from URL"""
+        """Extract YouTube video ID from URL."""
         if 'youtu.be/' in url:
             return url.split('youtu.be/')[-1].split('?')[0]
         elif 'youtube.com/watch' in url:
             from urllib.parse import parse_qs, urlparse
             return parse_qs(urlparse(url).query)['v'][0]
-        return url  # If already an ID
+        return url  # Return as is if not a YouTube URL
     
     def save_job_state(self, url, status, frame_skip, confidence_threshold, current_progress):
         """Save or update job processing state"""
@@ -117,6 +121,14 @@ class Storage:
         with sqlite3.connect(self.db_path) as conn:
             cursor = conn.cursor()
             
+            # Generate frame ID
+            frame_id = generate_frame_id(
+                'mygo',
+                frame_data['frame'],
+                frame_data.get('timestamp', 0),
+                frame_data.get('text', '')
+            )
+            
             # Convert frame number to timestamp if needed
             frame_number = frame_data['frame']
             timestamp = frame_data.get('timestamp')
@@ -131,9 +143,10 @@ class Storage:
             
             cursor.execute('''
                 INSERT OR REPLACE INTO frames
-                (youtube_id, frame_number, text, timestamp, confidence)
-                VALUES (?, ?, ?, ?, ?)
+                (id, youtube_id, frame_number, text, timestamp, confidence)
+                VALUES (?, ?, ?, ?, ?, ?)
             ''', (
+                frame_id,
                 youtube_id,
                 frame_data['frame'],
                 frame_data.get('text'),
@@ -215,14 +228,14 @@ class Storage:
                 WHERE youtube_id = ?
             ''', (youtube_id,))
             
-            conn.commit() 
+            conn.commit()
     
     def get_new_frames(self, youtube_id, last_frame_number=None):
         """Get new frames since the last frame number."""
         try:
             with sqlite3.connect(self.db_path) as conn:
                 query = """
-                    SELECT frame_number, text, modified_text, timestamp, confidence, is_deleted
+                    SELECT id, frame_number, text, modified_text, timestamp, confidence, is_deleted
                     FROM frames
                     WHERE youtube_id = ?
                 """
@@ -243,12 +256,13 @@ class Storage:
                 frames = []
                 for row in cursor:
                     frames.append({
-                        'frame_number': row[0],
-                        'text': row[1],
-                        'modified_text': row[2],
-                        'timestamp': row[3],
-                        'confidence': row[4],
-                        'is_deleted': bool(row[5])
+                        'id': row[0],
+                        'frame_number': row[1],
+                        'text': row[2],
+                        'modified_text': row[3],
+                        'timestamp': row[4],
+                        'confidence': row[5],
+                        'is_deleted': bool(row[6])
                     })
                 return frames
         except Exception as e:

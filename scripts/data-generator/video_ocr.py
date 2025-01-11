@@ -7,6 +7,8 @@ import csv
 from collections import defaultdict
 import base64
 import uuid
+import hashlib
+from id_generator import generate_frame_id
 
 def init_readers():
     """Initialize EasyOCR readers with GPU if available."""
@@ -340,16 +342,6 @@ def process_video(video_path, progress_callback=None, frame_skip=1, confidence_t
             with torch.cuda.device(current_device):
                 torch.cuda.empty_cache()
 
-def generate_frame_id(frame_data, collection):
-    """Generate a UUID-based ID for a frame."""
-    # Create a unique string combining frame data
-    frame_str = f"{collection}_{frame_data['frame']}_{frame_data['timestamp']}_{frame_data['texts'][0]['text']}"
-    # Generate UUID from the string
-    frame_uuid = uuid.uuid5(uuid.NAMESPACE_DNS, frame_str)
-    # Convert to base64 and remove padding
-    frame_id = base64.urlsafe_b64encode(frame_uuid.bytes).decode('ascii').rstrip('=')
-    return frame_id
-
 def save_results(results, base_filename):
     """Save OCR results to CSV file."""
     print("\nProcessing results...")
@@ -368,12 +360,11 @@ def save_results(results, base_filename):
         if current_text != best_text['text']:
             # Save previous group if exists
             if current_text is not None:
+                # 使用共享的 ID 生成器
+                frame_id = generate_frame_id('mygo', start_frame, start_time, current_text)
+                
                 formatted_results.append({
-                    'id': generate_frame_id({
-                        'frame': start_frame,
-                        'timestamp': start_time,
-                        'texts': [{'text': current_text}]
-                    }, 'mygo'),  # TODO: Make collection configurable
+                    'id': frame_id,
                     'score': best_text['confidence'],
                     'text': current_text,
                     'episode': '1',  # TODO: Extract from filename
@@ -390,12 +381,11 @@ def save_results(results, base_filename):
     
     # Save last group
     if current_text is not None:
+        # 使用共享的 ID 生成器
+        frame_id = generate_frame_id('mygo', start_frame, start_time, current_text)
+        
         formatted_results.append({
-            'id': generate_frame_id({
-                'frame': start_frame,
-                'timestamp': start_time,
-                'texts': [{'text': current_text}]
-            }, 'mygo'),  # TODO: Make collection configurable
+            'id': frame_id,
             'score': best_text['confidence'],
             'text': current_text,
             'episode': '1',  # TODO: Extract from filename

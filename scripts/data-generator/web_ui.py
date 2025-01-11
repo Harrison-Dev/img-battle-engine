@@ -16,6 +16,7 @@ import csv
 import base64
 import uuid
 from datetime import datetime, timedelta
+from id_generator import generate_frame_id
 
 app = Flask(__name__)
 storage = Storage()
@@ -443,26 +444,32 @@ def serve_frame(filename):
 def download_csv():
     """Download results as CSV file."""
     try:
+        print("\n=== Starting CSV Download Process ===")
         data = request.json
         current_only = data.get('current_only', False)
+        print(f"Current only: {current_only}")
         
         if not current_progress.get('current_url'):
             return jsonify({'error': 'No video has been processed'}), 400
         
         # Get data from storage
         youtube_id = storage.extract_youtube_id(current_progress['current_url'])
+        print(f"YouTube ID: {youtube_id}")
         job_state = storage.get_job_state(current_progress['current_url'])
         
         if not job_state:
             return jsonify({'error': 'No data found'}), 404
             
         frames = job_state['frames']
+        print(f"Total frames from storage: {len(frames)}")
+        
         if current_only:
             # Only include frames up to the current processed frame
             current_frame = current_progress.get('frame')
             if current_frame:
                 current_frame_num = int(current_frame.split('_')[1].split('.')[0])
                 frames = [f for f in frames if int(f['frame_number'].split('_')[1].split('.')[0]) <= current_frame_num]
+                print(f"Filtered to {len(frames)} frames for current progress")
         
         # Format timestamps with proper padding for HH:mm:ss,xxx format
         def format_timestamp(ts):
@@ -482,11 +489,13 @@ def download_csv():
         
         # Convert frames to CSV format
         formatted_results = []
+        print("\nProcessing frames for CSV:")
         for i in range(len(frames)):
             current = frames[i]
             next_frame = frames[i + 1] if i < len(frames) - 1 else None
             
             if current.get('is_deleted', False):
+                print(f"Skipping deleted frame: {current.get('frame_number')}")
                 continue
                 
             # Calculate end time/frame
@@ -502,8 +511,28 @@ def download_csv():
             start_time = format_timestamp(current['timestamp'])
             end_time = format_timestamp(end_timestamp)
             
+            # Log frame data before ID generation
+            print(f"\nProcessing frame {i+1}/{len(frames)}:")
+            print(f"Frame number: {current['frame_number']}")
+            print(f"Timestamp: {current['timestamp']}")
+            print(f"Text: {current.get('modified_text') or current.get('text', '')}")
+            print(f"Existing ID: {current.get('id')}")
+            
+            # 使用共享的 ID 生成器
+            frame_id = current.get('id')
+            if not frame_id:
+                frame_id = generate_frame_id(
+                    'mygo', 
+                    current['frame_number'], 
+                    current['timestamp'], 
+                    current.get('modified_text') or current.get('text', '')
+                )
+                print(f"Generated new ID: {frame_id}")
+            else:
+                print(f"Using existing ID: {frame_id}")
+            
             formatted_results.append({
-                'id': current.get('id') or base64.urlsafe_b64encode(uuid.uuid4().bytes).decode('utf-8')[:20],
+                'id': frame_id,
                 'score': current.get('confidence', 1.0),
                 'text': current.get('modified_text') or current.get('text', ''),
                 'episode': 1,  # Default episode number
@@ -513,15 +542,19 @@ def download_csv():
                 'end_frame': next_frame_num
             })
         
+        print(f"\nTotal formatted results: {len(formatted_results)}")
+        
         # Generate unique filename with timestamp
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
         filename = f'ocr_results_{timestamp}.csv'
+        print(f"Output filename: {filename}")
         
         # Create temporary file
         temp_path = os.path.join('downloads', filename)
         os.makedirs('downloads', exist_ok=True)
         
         # Write CSV file
+        print("\nWriting CSV file...")
         with open(temp_path, 'w', encoding='utf-8', newline='') as f:
             writer = csv.writer(f)
             writer.writerow(['id', 'score', 'text', 'episode', 'start_time', 'end_time', 'start_frame', 'end_frame'])
@@ -536,6 +569,9 @@ def download_csv():
                     result['start_frame'],
                     result['end_frame']
                 ])
+                print(f"Wrote row with ID: {result['id']}")
+        
+        print("\nCSV file created successfully")
         
         # Send file
         return send_file(
