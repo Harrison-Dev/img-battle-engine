@@ -70,6 +70,17 @@ func main() {
 		c.Status(http.StatusOK)
 	})
 
+	// 獲取所有可用集合
+	r.GET("/collections", func(c *gin.Context) {
+		collections := make([]string, 0, len(globalConfig.Collections))
+		for name := range globalConfig.Collections {
+			collections = append(collections, name)
+		}
+		c.JSON(http.StatusOK, gin.H{
+			"collections": collections,
+		})
+	})
+
 	// GraphQL endpoint
 	r.POST("/graphql", func(c *gin.Context) {
 		var request struct {

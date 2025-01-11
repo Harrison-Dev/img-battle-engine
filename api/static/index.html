@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="zh">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -12,44 +13,55 @@
             padding: 20px;
             background: #f5f5f5;
         }
+
         .search-container {
             background: white;
             padding: 20px;
             border-radius: 8px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
         }
+
         .search-form {
             display: flex;
             gap: 10px;
             margin-bottom: 20px;
             flex-wrap: wrap;
         }
-        input[type="text"], select, input[type="number"] {
+
+        input[type="text"],
+        select,
+        input[type="number"] {
             padding: 8px 12px;
             border: 1px solid #ddd;
             border-radius: 4px;
             font-size: 14px;
         }
+
         input[type="text"] {
             flex: 1;
             min-width: 200px;
         }
+
         select {
             width: 120px;
         }
+
         input[type="number"] {
             width: 80px;
         }
+
         .form-group {
             display: flex;
             align-items: center;
             gap: 8px;
         }
+
         .form-label {
             font-size: 14px;
             color: #666;
             white-space: nowrap;
         }
+
         button {
             padding: 8px 16px;
             background: #007bff;
@@ -59,13 +71,16 @@
             cursor: pointer;
             font-size: 14px;
         }
+
         button:hover {
             background: #0056b3;
         }
+
         .results {
             display: grid;
             gap: 20px;
         }
+
         .result-item {
             background: white;
             padding: 15px;
@@ -74,9 +89,11 @@
             display: flex;
             gap: 15px;
         }
+
         .result-info {
             flex: 1;
         }
+
         .result-image {
             width: 200px;
             height: 150px;
@@ -86,6 +103,7 @@
             position: relative;
             cursor: pointer;
         }
+
         .result-image img {
             width: 100%;
             height: 100%;
@@ -93,9 +111,11 @@
             opacity: 0;
             transition: opacity 0.3s ease;
         }
+
         .result-image img.loaded {
             opacity: 1;
         }
+
         .result-image .loading {
             position: absolute;
             top: 50%;
@@ -105,20 +125,24 @@
             font-size: 14px;
             z-index: 1;
         }
+
         .score {
             color: #666;
             font-size: 0.9em;
             margin: 5px 0;
         }
+
         .time {
             color: #007bff;
             margin: 5px 0;
         }
+
         .search-stats {
             margin-top: 10px;
             font-size: 0.9em;
             color: #666;
         }
+
         #preview-modal {
             display: none;
             position: fixed;
@@ -126,35 +150,37 @@
             left: 0;
             width: 100%;
             height: 100%;
-            background: rgba(0,0,0,0.8);
+            background: rgba(0, 0, 0, 0.8);
             z-index: 1000;
             justify-content: center;
             align-items: center;
             cursor: zoom-out;
         }
+
         #preview-modal img {
             max-width: 90%;
             max-height: 90%;
             object-fit: contain;
             background: white;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
         }
     </style>
 </head>
+
 <body>
     <div class="search-container">
         <h1>圖戰引擎搜索測試</h1>
         <div class="search-form">
-            <input type="text" id="search-input" placeholder="輸入搜索關鍵詞...">
+            <input type="text" id="search-input" name="query" placeholder="輸入搜索關鍵詞...">
             <div class="form-group">
                 <span class="form-label">集合：</span>
-                <select id="collection-select">
-                    <option value="mygo">MyGo</option>
+                <select id="collection-select" name="collection">
+                    <!-- 選項將由 JavaScript 動態添加 -->
                 </select>
             </div>
             <div class="form-group">
                 <span class="form-label">結果數量：</span>
-                <input type="number" id="limit-input" value="10" min="1" max="100">
+                <input type="number" id="limit-input" name="limit" value="10" min="1" max="100">
             </div>
             <button onclick="search()">搜索</button>
         </div>
@@ -167,54 +193,79 @@
     </div>
 
     <script>
+        // 頁面加載時獲取集合列表
+        window.onload = async function () {
+            try {
+                const response = await fetch('/collections');
+                const data = await response.json();
+                const collectionSelect = document.getElementById('collection-select');
+
+                // 清空現有選項
+                collectionSelect.innerHTML = '';
+
+                // 添加所有集合選項
+                data.collections.forEach(collection => {
+                    const option = document.createElement('option');
+                    option.value = collection;
+                    option.textContent = collection;
+                    collectionSelect.appendChild(option);
+                });
+            } catch (error) {
+                console.error('Failed to load collections:', error);
+            }
+        };
+
+        // 搜索功能
         async function search() {
             const query = document.getElementById('search-input').value;
             const collection = document.getElementById('collection-select').value;
-            const limit = parseInt(document.getElementById('limit-input').value) || 10;
-            
+            const limit = document.getElementById('limit-input').value;
+
             // 清空之前的結果
             document.getElementById('results').innerHTML = '';
             document.getElementById('search-stats').innerHTML = '搜索中...';
-            
+
+            const graphqlQuery = {
+                query: `
+                    query Search($query: String!, $collection: String, $limit: Int) {
+                        search(query: $query, collection: $collection, limit: $limit) {
+                            id
+                            score
+                            text
+                            episode
+                            startTime
+                            endTime
+                            collection
+                        }
+                    }
+                `,
+                variables: {
+                    query: query,
+                    collection: collection,
+                    limit: parseInt(limit)
+                }
+            };
+
             try {
                 const response = await fetch('/graphql', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
                     },
-                    body: JSON.stringify({
-                        query: `
-                            query Search($query: String!, $collection: String, $limit: Int) {
-                                search(query: $query, collection: $collection, limit: $limit) {
-                                    id
-                                    score
-                                    text
-                                    episode
-                                    startTime
-                                    endTime
-                                    collection
-                                }
-                            }
-                        `,
-                        variables: {
-                            query,
-                            collection,
-                            limit
-                        }
-                    })
+                    body: JSON.stringify(graphqlQuery)
                 });
 
-                const data = await response.json();
-                if (data.errors) {
-                    throw new Error(data.errors[0].message);
+                const result = await response.json();
+                if (result.errors) {
+                    throw new Error(result.errors[0].message);
                 }
-                
-                const results = data.data.search;
-                displayResults(results);
-                document.getElementById('search-stats').innerHTML = 
-                    `找到 ${results.length} 個結果`;
+
+                displayResults(result.data.search);
+                document.getElementById('search-stats').innerHTML =
+                    `找到 ${result.data.search.length} 個結果`;
             } catch (error) {
-                document.getElementById('search-stats').innerHTML = 
+                console.error('Search failed:', error);
+                document.getElementById('search-stats').innerHTML =
                     `搜索出錯: ${error.message}`;
             }
         }
@@ -232,39 +283,41 @@
                         <div class="score">相關度: ${result.score.toFixed(2)}</div>
                         <div class="time">時間: ${result.startTime} - ${result.endTime}</div>
                         <div>集數: ${result.episode}</div>
+                        <div class="debug">Frame ID: ${result.id}</div>
                     </div>
                     <div class="result-image" onclick="showPreview('${result.id}')">
                         <div class="loading">載入中...</div>
-                        <img data-id="${result.id}" onload="imageLoaded(this)">
+                        <img src="/frame/${result.id}" alt="Frame ${result.id}" 
+                            loading="lazy" 
+                            onload="imageLoaded(this)"
+                            onerror="imageError(this, '${result.id}')">
                     </div>
                 `;
                 container.appendChild(div);
-                
-                // 異步加載圖片
-                loadImage(result.id);
             });
-        }
-
-        async function loadImage(id) {
-            const img = document.querySelector(`img[data-id="${id}"]`);
-            if (img) {
-                img.src = `/frame/${id}.jpg`;
-            }
         }
 
         function imageLoaded(img) {
             img.classList.add('loaded');
-            // 隱藏載入提示
             const loadingDiv = img.parentElement.querySelector('.loading');
             if (loadingDiv) {
                 loadingDiv.style.display = 'none';
             }
         }
 
+        function imageError(img, id) {
+            const loadingDiv = img.parentElement.querySelector('.loading');
+            if (loadingDiv) {
+                loadingDiv.innerHTML = `載入失敗 (ID: ${id})`;
+                loadingDiv.style.color = 'red';
+                loadingDiv.style.display = 'block';
+            }
+        }
+
         function showPreview(id) {
             const modal = document.getElementById('preview-modal');
             const img = document.getElementById('preview-image');
-            img.src = `/frame/${id}.jpg`;
+            img.src = `/frame/${id}`;
             modal.style.display = 'flex';
         }
 
@@ -273,25 +326,26 @@
         }
 
         // 監聽回車鍵
-        document.getElementById('search-input').addEventListener('keypress', function(e) {
+        document.getElementById('search-input').addEventListener('keypress', function (e) {
             if (e.key === 'Enter') {
                 search();
             }
         });
 
         // 限制數量輸入範圍
-        document.getElementById('limit-input').addEventListener('change', function(e) {
+        document.getElementById('limit-input').addEventListener('change', function (e) {
             const value = parseInt(e.target.value);
             if (value < 1) e.target.value = 1;
             if (value > 100) e.target.value = 100;
         });
 
         // ESC 鍵關閉預覽
-        document.addEventListener('keydown', function(e) {
+        document.addEventListener('keydown', function (e) {
             if (e.key === 'Escape') {
                 closePreview();
             }
         });
     </script>
 </body>
-</html> 
+
+</html>
