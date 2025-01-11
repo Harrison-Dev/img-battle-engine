@@ -1,5 +1,5 @@
 collections:
-  mygo:
+  MyGO:
     table_file: "tables/mygo.csv"
     content_dir: "contents/mygo"
     fields:
@@ -29,7 +29,7 @@ collections:
       frame_extraction:
         format: "jpeg"
         quality: 90 
-  ave:
+  Ave Mujica:
     table_file: "tables/ave.csv"
     content_dir: "contents/ave"
     fields:

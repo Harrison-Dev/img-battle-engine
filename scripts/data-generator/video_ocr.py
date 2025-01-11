@@ -340,43 +340,71 @@ def process_video(video_path, progress_callback=None, frame_skip=1, confidence_t
             with torch.cuda.device(current_device):
                 torch.cuda.empty_cache()
 
+def generate_frame_id(frame_data, collection):
+    """Generate a UUID-based ID for a frame."""
+    # Create a unique string combining frame data
+    frame_str = f"{collection}_{frame_data['frame']}_{frame_data['timestamp']}_{frame_data['texts'][0]['text']}"
+    # Generate UUID from the string
+    frame_uuid = uuid.uuid5(uuid.NAMESPACE_DNS, frame_str)
+    # Convert to base64 and remove padding
+    frame_id = base64.urlsafe_b64encode(frame_uuid.bytes).decode('ascii').rstrip('=')
+    return frame_id
+
 def save_results(results, base_filename):
-    """Save results in CSV format with required fields."""
-    # Convert results to required format
-    formatted_results = []
-    for i in range(len(results)):
-        current = results[i]
-        next_result = results[i + 1] if i < len(results) - 1 else None
-        
-        # Get best text from current frame
-        best_text = max(current['texts'], key=lambda x: x['confidence'])
-        
-        # Generate unique ID
-        unique_id = base64.urlsafe_b64encode(uuid.uuid4().bytes).decode('utf-8')[:20]
-        
-        # Calculate end time/frame
-        end_timestamp = next_result['timestamp'] if next_result else current['timestamp'] + 2.0
-        current_frame = int(current['frame'].split('_')[1].split('.')[0])
-        next_frame = int(next_result['frame'].split('_')[1].split('.')[0]) if next_result else current_frame + 60
-        
-        # Format timestamps with proper padding
-        def format_timestamp(ts):
-            minutes = int(ts // 60)
-            seconds = int(ts % 60)
-            milliseconds = int((ts % 1) * 1000)
-            return f"{minutes:02d}:{seconds:02d},{milliseconds:03d}"
-        
-        formatted_results.append({
-            'id': unique_id,
-            'score': best_text['confidence'],
-            'text': best_text['text'],
-            'episode': 1,  # Default episode number
-            'start_time': format_timestamp(current['timestamp']),
-            'end_time': format_timestamp(end_timestamp),
-            'start_frame': current_frame,
-            'end_frame': next_frame
-        })
+    """Save OCR results to CSV file."""
+    print("\nProcessing results...")
     
+    # Format results for CSV
+    formatted_results = []
+    current_text = None
+    start_frame = None
+    start_time = None
+    
+    for result in results:
+        frame_name = result['frame']
+        timestamp = result['timestamp']
+        best_text = max(result['texts'], key=lambda x: x['confidence'])
+        
+        if current_text != best_text['text']:
+            # Save previous group if exists
+            if current_text is not None:
+                formatted_results.append({
+                    'id': generate_frame_id({
+                        'frame': start_frame,
+                        'timestamp': start_time,
+                        'texts': [{'text': current_text}]
+                    }, 'mygo'),  # TODO: Make collection configurable
+                    'score': best_text['confidence'],
+                    'text': current_text,
+                    'episode': '1',  # TODO: Extract from filename
+                    'start_time': f"{int(start_time//60):02d}:{int(start_time%60):02d},{int((start_time%1)*1000):03d}",
+                    'end_time': f"{int(timestamp//60):02d}:{int(timestamp%60):02d},{int((timestamp%1)*1000):03d}",
+                    'start_frame': start_frame,
+                    'end_frame': frame_name
+                })
+            
+            # Start new group
+            current_text = best_text['text']
+            start_frame = frame_name
+            start_time = timestamp
+    
+    # Save last group
+    if current_text is not None:
+        formatted_results.append({
+            'id': generate_frame_id({
+                'frame': start_frame,
+                'timestamp': start_time,
+                'texts': [{'text': current_text}]
+            }, 'mygo'),  # TODO: Make collection configurable
+            'score': best_text['confidence'],
+            'text': current_text,
+            'episode': '1',  # TODO: Extract from filename
+            'start_time': f"{int(start_time//60):02d}:{int(start_time%60):02d},{int((start_time%1)*1000):03d}",
+            'end_time': f"{int(timestamp//60):02d}:{int(timestamp%60):02d},{int((timestamp%1)*1000):03d}",
+            'start_frame': start_frame,
+            'end_frame': frame_name
+        })
+
     # Save as CSV
     csv_file = f'{base_filename}.csv'
     with open(csv_file, 'w', encoding='utf-8', newline='') as f:
