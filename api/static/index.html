@@ -1,124 +1,98 @@
 <!DOCTYPE html>
 <html lang="zh">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>圖戰引擎 - 搜索測試</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <style>
         body {
+            background: #f8f9fa;
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-            max-width: 800px;
-            margin: 0 auto;
-            padding: 20px;
-            background: #f5f5f5;
         }
+
         .search-container {
-            background: white;
+            max-width: 1200px;
+            margin: 2rem auto;
             padding: 20px;
-            border-radius: 8px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
         }
+
         .search-form {
-            display: flex;
-            gap: 10px;
-            margin-bottom: 20px;
-            flex-wrap: wrap;
+            background: white;
+            padding: 1.5rem;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            margin-bottom: 2rem;
         }
-        input[type="text"], select, input[type="number"] {
-            padding: 8px 12px;
-            border: 1px solid #ddd;
-            border-radius: 4px;
-            font-size: 14px;
-        }
-        input[type="text"] {
-            flex: 1;
-            min-width: 200px;
-        }
-        select {
-            width: 120px;
-        }
-        input[type="number"] {
-            width: 80px;
-        }
-        .form-group {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
-        .form-label {
-            font-size: 14px;
-            color: #666;
-            white-space: nowrap;
-        }
-        button {
-            padding: 8px 16px;
-            background: #007bff;
-            color: white;
-            border: none;
-            border-radius: 4px;
-            cursor: pointer;
-            font-size: 14px;
-        }
-        button:hover {
-            background: #0056b3;
-        }
+
         .results {
             display: grid;
-            gap: 20px;
+            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+            gap: 1.5rem;
         }
+
         .result-item {
             background: white;
-            padding: 15px;
-            border: 1px solid #ddd;
-            border-radius: 4px;
-            display: flex;
-            gap: 15px;
-        }
-        .result-info {
-            flex: 1;
-        }
-        .result-image {
-            width: 200px;
-            height: 150px;
-            background: #f0f0f0;
-            border-radius: 4px;
+            border-radius: 8px;
             overflow: hidden;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            transition: transform 0.2s;
+        }
+
+        .result-item:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+        }
+
+        .result-image {
             position: relative;
+            padding-top: 56.25%;
+            /* 16:9 aspect ratio */
+            background: #f0f0f0;
             cursor: pointer;
         }
+
         .result-image img {
+            position: absolute;
+            top: 0;
+            left: 0;
             width: 100%;
             height: 100%;
             object-fit: cover;
             opacity: 0;
             transition: opacity 0.3s ease;
         }
+
         .result-image img.loaded {
             opacity: 1;
         }
-        .result-image .loading {
+
+        .result-info {
+            padding: 1rem;
+        }
+
+        .result-text {
+            font-size: 0.9rem;
+            margin-bottom: 0.5rem;
+            color: #333;
+        }
+
+        .result-meta {
+            font-size: 0.8rem;
+            color: #666;
+        }
+
+        .loading {
             position: absolute;
             top: 50%;
             left: 50%;
             transform: translate(-50%, -50%);
             color: #666;
-            font-size: 14px;
             z-index: 1;
         }
-        .score {
-            color: #666;
-            font-size: 0.9em;
-            margin: 5px 0;
-        }
-        .time {
-            color: #007bff;
-            margin: 5px 0;
-        }
-        .search-stats {
-            margin-top: 10px;
-            font-size: 0.9em;
-            color: #666;
-        }
+
         #preview-modal {
             display: none;
             position: fixed;
@@ -126,96 +100,271 @@
             left: 0;
             width: 100%;
             height: 100%;
-            background: rgba(0,0,0,0.8);
-            z-index: 1000;
+            background: rgba(0, 0, 0, 0.9);
+            z-index: 1050;
+        }
+
+        .preview-content {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            display: flex;
             justify-content: center;
             align-items: center;
-            cursor: zoom-out;
         }
-        #preview-modal img {
+
+        .preview-image {
             max-width: 90%;
-            max-height: 90%;
+            max-height: 90vh;
             object-fit: contain;
+        }
+
+        .preview-controls {
+            position: absolute;
+            top: 1rem;
+            right: 1rem;
+            display: flex;
+            gap: 0.5rem;
+        }
+
+        .preview-button {
+            background: rgba(255, 255, 255, 0.2);
+            border: none;
+            color: white;
+            width: 40px;
+            height: 40px;
+            border-radius: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        .preview-button:hover {
+            background: rgba(255, 255, 255, 0.3);
+        }
+
+        .search-stats {
+            margin: 1rem 0;
+            padding: 0.5rem 1rem;
             background: white;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+            border-radius: 4px;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+        }
+
+        /* 視圖模式相關樣式 */
+        .view-controls {
+            display: flex;
+            gap: 1rem;
+            align-items: center;
+            margin-bottom: 1rem;
+            background: white;
+            padding: 1rem;
+            border-radius: 8px;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+        }
+
+        .view-controls .btn-group {
+            display: flex;
+            gap: 0.5rem;
+        }
+
+        .view-controls label {
+            font-size: 0.9rem;
+            color: #666;
+            margin-bottom: 0;
+            white-space: nowrap;
+        }
+
+        /* 列表視圖樣式 */
+        .results.list-view {
+            display: block;
+            max-width: 1600px;
+            margin: 0 auto;
+        }
+
+        .results.list-view .result-item {
+            display: flex;
+            margin-bottom: 1rem;
+            max-width: 100%;
+            gap: 1rem;
+        }
+
+        .results.list-view .result-image {
+            width: 480px;
+            /* 固定寬度 */
+            min-width: 480px;
+            padding-top: 0;
+            height: 270px;
+            /* 16:9 比例 */
+        }
+
+        .results.list-view .result-info {
+            flex: 1;
+        }
+
+        /* 網格視圖樣式 */
+        .results.grid-view {
+            display: grid;
+            grid-template-columns: repeat(var(--columns-count, 4), 1fr);
+            gap: 1.5rem;
+            max-width: 1800px;
+            margin: 0 auto;
+        }
+
+        .results.grid-view .result-image {
+            padding-top: 56.25%;
+            /* 16:9 aspect ratio */
+        }
+
+        /* 視圖控制區樣式更新 */
+        .view-controls .columns-control {
+            width: 120px;
         }
     </style>
 </head>
+
 <body>
     <div class="search-container">
-        <h1>圖戰引擎搜索測試</h1>
+        <h1 class="mb-4">圖戰引擎搜索測試</h1>
+
         <div class="search-form">
-            <input type="text" id="search-input" placeholder="輸入搜索關鍵詞...">
-            <div class="form-group">
-                <span class="form-label">集合：</span>
-                <select id="collection-select">
-                    <option value="mygo">MyGo</option>
-                </select>
+            <div class="row g-3">
+                <div class="col-12 col-md-6">
+                    <input type="text" id="search-input" class="form-control" placeholder="輸入搜索關鍵詞...">
+                </div>
+                <div class="col-12 col-md-3">
+                    <select id="collection-select" class="form-select">
+                        <!-- 選項將由 JavaScript 動態添加 -->
+                    </select>
+                </div>
+                <div class="col-6 col-md-2">
+                    <input type="number" id="limit-input" class="form-control" value="10" min="1" max="100">
+                </div>
+                <div class="col-6 col-md-1">
+                    <button onclick="search()" class="btn btn-primary w-100">
+                        <i class="fas fa-search"></i>
+                    </button>
+                </div>
             </div>
-            <div class="form-group">
-                <span class="form-label">結果數量：</span>
-                <input type="number" id="limit-input" value="10" min="1" max="100">
-            </div>
-            <button onclick="search()">搜索</button>
         </div>
-        <div class="search-stats" id="search-stats"></div>
-        <div id="results" class="results"></div>
+
+        <div id="search-stats" class="search-stats"></div>
+
+        <!-- 修改視圖控制區 -->
+        <div class="view-controls">
+            <div class="btn-group" role="group" aria-label="視圖切換">
+                <button type="button" class="btn btn-outline-primary" onclick="setViewMode('grid')" id="grid-view-btn">
+                    <i class="fas fa-th-large"></i> 網格
+                </button>
+                <button type="button" class="btn btn-outline-primary" onclick="setViewMode('list')" id="list-view-btn">
+                    <i class="fas fa-list"></i> 列表
+                </button>
+            </div>
+            <div class="d-flex align-items-center gap-2">
+                <label for="columns-count">列數:</label>
+                <input type="range" class="form-range columns-control" id="columns-count" min="2" max="6" value="4"
+                    oninput="updateColumnsCount(this.value)">
+                <span id="columns-value">4 列</span>
+            </div>
+        </div>
+
+        <div id="results" class="results grid-view"></div>
     </div>
 
     <div id="preview-modal" onclick="closePreview()">
-        <img id="preview-image">
+        <div class="preview-content">
+            <img id="preview-image" class="preview-image">
+            <div class="preview-controls">
+                <button class="preview-button" onclick="rotateImage(-90)">
+                    <i class="fas fa-undo"></i>
+                </button>
+                <button class="preview-button" onclick="rotateImage(90)">
+                    <i class="fas fa-redo"></i>
+                </button>
+                <button class="preview-button" onclick="toggleZoom()">
+                    <i class="fas fa-search-plus"></i>
+                </button>
+                <button class="preview-button" onclick="closePreview()">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+        </div>
     </div>
 
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
     <script>
+        // 頁面加載時獲取集合列表
+        window.onload = async function () {
+            try {
+                const response = await fetch('/collections');
+                const data = await response.json();
+                const collectionSelect = document.getElementById('collection-select');
+
+                collectionSelect.innerHTML = '';
+                data.collections.forEach(collection => {
+                    const option = document.createElement('option');
+                    option.value = collection;
+                    option.textContent = collection;
+                    collectionSelect.appendChild(option);
+                });
+            } catch (error) {
+                console.error('Failed to load collections:', error);
+            }
+        };
+
+        // 搜索功能
         async function search() {
             const query = document.getElementById('search-input').value;
             const collection = document.getElementById('collection-select').value;
-            const limit = parseInt(document.getElementById('limit-input').value) || 10;
-            
-            // 清空之前的結果
+            const limit = document.getElementById('limit-input').value;
+
             document.getElementById('results').innerHTML = '';
-            document.getElementById('search-stats').innerHTML = '搜索中...';
-            
+            document.getElementById('search-stats').innerHTML = '<div class="spinner-border spinner-border-sm" role="status"></div> 搜索中...';
+
+            const graphqlQuery = {
+                query: `
+                    query Search($query: String!, $collection: String, $limit: Int) {
+                        search(query: $query, collection: $collection, limit: $limit) {
+                            id
+                            score
+                            text
+                            episode
+                            startTime
+                            endTime
+                            collection
+                        }
+                    }
+                `,
+                variables: {
+                    query: query,
+                    collection: collection,
+                    limit: parseInt(limit)
+                }
+            };
+
             try {
                 const response = await fetch('/graphql', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
                     },
-                    body: JSON.stringify({
-                        query: `
-                            query Search($query: String!, $collection: String, $limit: Int) {
-                                search(query: $query, collection: $collection, limit: $limit) {
-                                    id
-                                    score
-                                    text
-                                    episode
-                                    startTime
-                                    endTime
-                                    collection
-                                }
-                            }
-                        `,
-                        variables: {
-                            query,
-                            collection,
-                            limit
-                        }
-                    })
+                    body: JSON.stringify(graphqlQuery)
                 });
 
-                const data = await response.json();
-                if (data.errors) {
-                    throw new Error(data.errors[0].message);
+                const result = await response.json();
+                if (result.errors) {
+                    throw new Error(result.errors[0].message);
                 }
-                
-                const results = data.data.search;
-                displayResults(results);
-                document.getElementById('search-stats').innerHTML = 
-                    `找到 ${results.length} 個結果`;
+
+                displayResults(result.data.search);
+                document.getElementById('search-stats').innerHTML =
+                    `<i class="fas fa-info-circle"></i> 找到 ${result.data.search.length} 個結果`;
             } catch (error) {
-                document.getElementById('search-stats').innerHTML = 
-                    `搜索出錯: ${error.message}`;
+                console.error('Search failed:', error);
+                document.getElementById('search-stats').innerHTML =
+                    `<i class="fas fa-exclamation-circle text-danger"></i> 搜索出錯: ${error.message}`;
             }
         }
 
@@ -227,71 +376,137 @@
                 const div = document.createElement('div');
                 div.className = 'result-item';
                 div.innerHTML = `
-                    <div class="result-info">
-                        <div class="text">${result.text}</div>
-                        <div class="score">相關度: ${result.score.toFixed(2)}</div>
-                        <div class="time">時間: ${result.startTime} - ${result.endTime}</div>
-                        <div>集數: ${result.episode}</div>
-                    </div>
                     <div class="result-image" onclick="showPreview('${result.id}')">
-                        <div class="loading">載入中...</div>
-                        <img data-id="${result.id}" onload="imageLoaded(this)">
+                        <div class="loading">
+                            <div class="spinner-border spinner-border-sm" role="status"></div>
+                            <span class="ms-2">載入中...</span>
+                        </div>
+                        <img src="/frame/${result.id}" 
+                            alt="Frame ${result.id}" 
+                            loading="lazy" 
+                            onload="imageLoaded(this)"
+                            onerror="imageError(this, '${result.id}')">
+                    </div>
+                    <div class="result-info">
+                        <div class="result-text">${result.text}</div>
+                        <div class="result-meta">
+                            <div><i class="fas fa-star"></i> 相關度: ${result.score.toFixed(2)}</div>
+                            <div><i class="fas fa-clock"></i> 時間: ${result.startTime} - ${result.endTime}</div>
+                            <div><i class="fas fa-film"></i> 集數: ${result.episode}</div>
+                            <div class="text-muted"><i class="fas fa-hashtag"></i> ${result.id}</div>
+                        </div>
                     </div>
                 `;
                 container.appendChild(div);
-                
-                // 異步加載圖片
-                loadImage(result.id);
             });
-        }
-
-        async function loadImage(id) {
-            const img = document.querySelector(`img[data-id="${id}"]`);
-            if (img) {
-                img.src = `/frame/${id}.jpg`;
-            }
         }
 
         function imageLoaded(img) {
             img.classList.add('loaded');
-            // 隱藏載入提示
             const loadingDiv = img.parentElement.querySelector('.loading');
             if (loadingDiv) {
                 loadingDiv.style.display = 'none';
             }
         }
 
+        function imageError(img, id) {
+            const loadingDiv = img.parentElement.querySelector('.loading');
+            if (loadingDiv) {
+                loadingDiv.innerHTML = `
+                    <i class="fas fa-exclamation-circle text-danger"></i>
+                    <span class="ms-2">載入失敗 (ID: ${id})</span>
+                `;
+            }
+        }
+
+        let currentRotation = 0;
+        let isZoomed = false;
+
         function showPreview(id) {
             const modal = document.getElementById('preview-modal');
             const img = document.getElementById('preview-image');
-            img.src = `/frame/${id}.jpg`;
-            modal.style.display = 'flex';
+            img.src = `/frame/${id}`;
+            modal.style.display = 'block';
+            currentRotation = 0;
+            isZoomed = false;
+            updatePreviewImage();
         }
 
         function closePreview() {
             document.getElementById('preview-modal').style.display = 'none';
         }
 
+        function rotateImage(degrees) {
+            event.stopPropagation();
+            currentRotation = (currentRotation + degrees) % 360;
+            updatePreviewImage();
+        }
+
+        function toggleZoom() {
+            event.stopPropagation();
+            isZoomed = !isZoomed;
+            updatePreviewImage();
+            const icon = event.currentTarget.querySelector('i');
+            icon.className = isZoomed ? 'fas fa-search-minus' : 'fas fa-search-plus';
+        }
+
+        function updatePreviewImage() {
+            const img = document.getElementById('preview-image');
+            img.style.transform = `rotate(${currentRotation}deg) scale(${isZoomed ? 1.5 : 1})`;
+            img.style.transition = 'transform 0.3s ease';
+        }
+
         // 監聽回車鍵
-        document.getElementById('search-input').addEventListener('keypress', function(e) {
+        document.getElementById('search-input').addEventListener('keypress', function (e) {
             if (e.key === 'Enter') {
                 search();
             }
         });
 
         // 限制數量輸入範圍
-        document.getElementById('limit-input').addEventListener('change', function(e) {
+        document.getElementById('limit-input').addEventListener('change', function (e) {
             const value = parseInt(e.target.value);
             if (value < 1) e.target.value = 1;
             if (value > 100) e.target.value = 100;
         });
 
         // ESC 鍵關閉預覽
-        document.addEventListener('keydown', function(e) {
+        document.addEventListener('keydown', function (e) {
             if (e.key === 'Escape') {
                 closePreview();
             }
         });
+
+        // 修改視圖模式相關函數
+        let currentViewMode = 'grid';
+
+        function setViewMode(mode) {
+            currentViewMode = mode;
+            const resultsContainer = document.getElementById('results');
+            resultsContainer.className = `results ${mode}-view`;
+
+            // 更新按鈕狀態
+            document.getElementById('grid-view-btn').className =
+                `btn btn-${mode === 'grid' ? '' : 'outline-'}primary`;
+            document.getElementById('list-view-btn').className =
+                `btn btn-${mode === 'list' ? '' : 'outline-'}primary`;
+
+            // 更新列數控制項的可見性
+            const columnsControl = document.querySelector('.columns-control').parentElement;
+            columnsControl.style.display = mode === 'grid' ? 'flex' : 'none';
+        }
+
+        function updateColumnsCount(count) {
+            document.documentElement.style.setProperty('--columns-count', count);
+            document.getElementById('columns-value').textContent = `${count} 列`;
+        }
+
+        // 初始化視圖模式
+        window.addEventListener('load', function () {
+            setViewMode('grid');
+            updateColumnsCount(4);
+        });
     </script>
 </body>
-</html> 
+
+</html>

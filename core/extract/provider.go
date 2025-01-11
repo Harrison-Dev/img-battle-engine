@@ -2,6 +2,7 @@ package extract
 
 import (
 	"fmt"
+	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -19,8 +20,10 @@ type TimeCode struct {
 
 // ParseTimeCode 解析時間碼字符串
 func ParseTimeCode(tc string) (*TimeCode, error) {
+	log.Printf("[ParseTimeCode] Parsing timecode: %s", tc)
 	parts := strings.Split(tc, ",")
 	if len(parts) != 2 {
+		log.Printf("[ParseTimeCode] Error: Invalid timecode format: %s", tc)
 		return nil, fmt.Errorf("invalid timecode format: %s", tc)
 	}
 
@@ -64,6 +67,8 @@ func ParseTimeCode(tc string) (*TimeCode, error) {
 			timeCode.Hours, timeCode.Minutes, timeCode.Seconds, timeCode.Millis)
 	}
 
+	log.Printf("[ParseTimeCode] Successfully parsed timecode: %02d:%02d:%02d,%03d",
+		timeCode.Hours, timeCode.Minutes, timeCode.Seconds, timeCode.Millis)
 	return &timeCode, nil
 }
 
@@ -86,36 +91,72 @@ type MPEGProvider struct {
 func NewMPEGProvider() (*MPEGProvider, error) {
 	ffmpegPath, err := exec.LookPath("ffmpeg")
 	if err != nil {
+		log.Printf("[NewMPEGProvider] Error: ffmpeg not found in PATH")
 		return nil, fmt.Errorf("ffmpeg not found: %v", err)
 	}
+	log.Printf("[NewMPEGProvider] Found ffmpeg at: %s", ffmpegPath)
 	return &MPEGProvider{ffmpegPath: ffmpegPath}, nil
 }
 
 // ExtractFrame 從MPEG視頻中提取指定時間點的幀
 func (p *MPEGProvider) ExtractFrame(videoPath string, timeCode string) ([]byte, error) {
+	log.Printf("[ExtractFrame] Starting extraction - Video: %s, TimeCode: %s", videoPath, timeCode)
+
+	// 檢查視頻文件是否存在
+	if _, err := os.Stat(videoPath); os.IsNotExist(err) {
+		log.Printf("[ExtractFrame] Error: Video file not found at path: %s", videoPath)
+		return nil, fmt.Errorf("video file not found: %s", videoPath)
+	}
+
 	tc, err := ParseTimeCode(timeCode)
 	if err != nil {
+		log.Printf("[ExtractFrame] Error parsing timecode '%s': %v", timeCode, err)
 		return nil, err
 	}
 
 	// 創建臨時文件
 	tmpFile := filepath.Join(os.TempDir(), fmt.Sprintf("frame_%d.jpg", time.Now().UnixNano()))
-	defer os.Remove(tmpFile)
+	log.Printf("[ExtractFrame] Using temporary file: %s", tmpFile)
+	defer func() {
+		if err := os.Remove(tmpFile); err != nil {
+			log.Printf("[ExtractFrame] Warning: Failed to remove temporary file %s: %v", tmpFile, err)
+		}
+	}()
 
-	// 使用ffmpeg提取幀
-	cmd := exec.Command(p.ffmpegPath,
-		"-ss", fmt.Sprintf("%f", tc.ToSeconds()),
+	// 構建 ffmpeg 命令
+	seconds := tc.ToSeconds()
+	args := []string{
+		"-ss", fmt.Sprintf("%f", seconds),
 		"-i", videoPath,
 		"-vframes", "1",
 		"-q:v", "2",
 		"-f", "image2",
 		tmpFile,
-	)
+	}
+	
+	log.Printf("[ExtractFrame] Executing ffmpeg command: %s %v", p.ffmpegPath, args)
+	cmd := exec.Command(p.ffmpegPath, args...)
 
-	if err := cmd.Run(); err != nil {
-		return nil, fmt.Errorf("failed to extract frame: %v", err)
+	// 捕獲命令輸出
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		log.Printf("[ExtractFrame] FFmpeg error: %v\nOutput: %s", err, string(output))
+		return nil, fmt.Errorf("failed to extract frame: %v (output: %s)", err, string(output))
+	}
+
+	// 檢查輸出文件是否存在
+	if _, err := os.Stat(tmpFile); os.IsNotExist(err) {
+		log.Printf("[ExtractFrame] Error: Frame file was not created at %s", tmpFile)
+		return nil, fmt.Errorf("frame file was not created")
 	}
 
 	// 讀取生成的圖片
-	return os.ReadFile(tmpFile)
+	frameData, err := os.ReadFile(tmpFile)
+	if err != nil {
+		log.Printf("[ExtractFrame] Error reading frame file %s: %v", tmpFile, err)
+		return nil, fmt.Errorf("failed to read frame file: %v", err)
+	}
+
+	log.Printf("[ExtractFrame] Successfully extracted frame - Size: %d bytes", len(frameData))
+	return frameData, nil
 }

@@ -1,0 +1,8 @@
+you-get>=0.4.1650
+easyocr>=1.7.1
+opencv-python>=4.8.0
+numpy>=1.24.0
+--extra-index-url https://download.pytorch.org/whl/cu118
+torch>=2.0.0
+torchvision>=0.15.0
+torchaudio>=2.0.0 
