@@ -359,13 +359,20 @@ def save_results(results, base_filename):
         current_frame = int(current['frame'].split('_')[1].split('.')[0])
         next_frame = int(next_result['frame'].split('_')[1].split('.')[0]) if next_result else current_frame + 60
         
+        # Format timestamps with proper padding
+        def format_timestamp(ts):
+            minutes = int(ts // 60)
+            seconds = int(ts % 60)
+            milliseconds = int((ts % 1) * 1000)
+            return f"{minutes:02d}:{seconds:02d},{milliseconds:03d}"
+        
         formatted_results.append({
             'id': unique_id,
             'score': best_text['confidence'],
             'text': best_text['text'],
             'episode': 1,  # Default episode number
-            'start_time': f"{int(current['timestamp']//60):02d}:{int(current['timestamp']%60):02d},{int((current['timestamp']%1)*1000):03d}",
-            'end_time': f"{int(end_timestamp//60):02d}:{int(end_timestamp%60):02d},{int((end_timestamp%1)*1000):03d}",
+            'start_time': format_timestamp(current['timestamp']),
+            'end_time': format_timestamp(end_timestamp),
             'start_frame': current_frame,
             'end_frame': next_frame
         })

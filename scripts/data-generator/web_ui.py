@@ -12,6 +12,10 @@ import time
 from storage import Storage
 import subprocess
 from pathlib import Path
+import csv
+import base64
+import uuid
+from datetime import datetime, timedelta
 
 app = Flask(__name__)
 storage = Storage()
@@ -437,66 +441,115 @@ def serve_frame(filename):
 
 @app.route('/download_csv', methods=['POST'])
 def download_csv():
-    """Download the results CSV file with modifications."""
+    """Download results as CSV file."""
     try:
         data = request.json
-        deleted_frames = set(data.get('deleted_frames', []))
-        modified_texts = data.get('modified_texts', {})
         current_only = data.get('current_only', False)
         
-        # Read the original CSV
-        df = pd.read_csv('ocr_results.csv')
+        if not current_progress.get('current_url'):
+            return jsonify({'error': 'No video has been processed'}), 400
         
+        # Get data from storage
+        youtube_id = storage.extract_youtube_id(current_progress['current_url'])
+        job_state = storage.get_job_state(current_progress['current_url'])
+        
+        if not job_state:
+            return jsonify({'error': 'No data found'}), 404
+            
+        frames = job_state['frames']
         if current_only:
             # Only include frames up to the current processed frame
-            max_frame = current_progress.get('processed_frames', 0)
-            df = df[df['start_frame'] <= max_frame]
+            current_frame = current_progress.get('frame')
+            if current_frame:
+                current_frame_num = int(current_frame.split('_')[1].split('.')[0])
+                frames = [f for f in frames if int(f['frame_number'].split('_')[1].split('.')[0]) <= current_frame_num]
         
-        # Remove deleted frames
-        df = df[~df['start_frame'].astype(str).isin(deleted_frames)]
+        # Format timestamps with proper padding for HH:mm:ss,xxx format
+        def format_timestamp(ts):
+            if ts is None:
+                return "00:00:00,000"
+            
+            # Convert seconds to timedelta
+            td = timedelta(seconds=float(ts))
+            # Get hours, minutes, seconds
+            hours = td.seconds // 3600
+            minutes = (td.seconds % 3600) // 60
+            seconds = td.seconds % 60
+            # Get milliseconds
+            milliseconds = int(float(ts) * 1000 % 1000)
+            
+            return f"{hours:02d}:{minutes:02d}:{seconds:02d},{milliseconds:03d}"
         
-        # Update modified texts
-        for frame, new_text in modified_texts.items():
-            frame_idx = df['start_frame'].astype(str) == frame
-            if any(frame_idx):
-                df.loc[frame_idx, 'text'] = new_text
+        # Convert frames to CSV format
+        formatted_results = []
+        for i in range(len(frames)):
+            current = frames[i]
+            next_frame = frames[i + 1] if i < len(frames) - 1 else None
+            
+            if current.get('is_deleted', False):
+                continue
+                
+            # Calculate end time/frame
+            current_frame = int(current['frame_number'].split('_')[1].split('.')[0])
+            if next_frame:
+                next_frame_num = int(next_frame['frame_number'].split('_')[1].split('.')[0])
+                end_timestamp = next_frame['timestamp']
+            else:
+                next_frame_num = current_frame + 60
+                end_timestamp = float(current['timestamp']) + 2.0
+            
+            # Format timestamps
+            start_time = format_timestamp(current['timestamp'])
+            end_time = format_timestamp(end_timestamp)
+            
+            formatted_results.append({
+                'id': current.get('id') or base64.urlsafe_b64encode(uuid.uuid4().bytes).decode('utf-8')[:20],
+                'score': current.get('confidence', 1.0),
+                'text': current.get('modified_text') or current.get('text', ''),
+                'episode': 1,  # Default episode number
+                'start_time': start_time,
+                'end_time': end_time,
+                'start_frame': current_frame,
+                'end_frame': next_frame_num
+            })
         
-        # Generate a unique filename with timestamp
-        timestamp = time.strftime("%Y%m%d_%H%M%S")
+        # Generate unique filename with timestamp
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
         filename = f'ocr_results_{timestamp}.csv'
         
-        # Save to temporary file
-        temp_csv = os.path.join('downloads', filename)
-        df.to_csv(temp_csv, index=False)
+        # Create temporary file
+        temp_path = os.path.join('downloads', filename)
+        os.makedirs('downloads', exist_ok=True)
         
-        # Create response with file
-        response = send_file(
-            temp_csv,
-            mimetype='text/csv',
+        # Write CSV file
+        with open(temp_path, 'w', encoding='utf-8', newline='') as f:
+            writer = csv.writer(f)
+            writer.writerow(['id', 'score', 'text', 'episode', 'start_time', 'end_time', 'start_frame', 'end_frame'])
+            for result in formatted_results:
+                writer.writerow([
+                    result['id'],
+                    f"{float(result['score']):.1f}",
+                    result['text'],
+                    result['episode'],
+                    result['start_time'],
+                    result['end_time'],
+                    result['start_frame'],
+                    result['end_frame']
+                ])
+        
+        # Send file
+        return send_file(
+            temp_path,
             as_attachment=True,
-            download_name=filename
+            download_name=filename,
+            mimetype='text/csv'
         )
         
-        # Add headers for download progress
-        response.headers['Content-Length'] = os.path.getsize(temp_csv)
-        response.headers['Accept-Ranges'] = 'bytes'
-        response.headers['Cache-Control'] = 'no-cache'
-        response.headers['Content-Disposition'] = f'attachment; filename={filename}'
-        
-        return response
-        
     except Exception as e:
+        print(f"Error generating CSV: {str(e)}")
+        import traceback
+        traceback.print_exc()
         return jsonify({'error': str(e)}), 500
-    finally:
-        # Clean up temporary file after a delay to ensure download completes
-        def cleanup_temp():
-            time.sleep(5)  # Wait 5 seconds before cleanup
-            if os.path.exists(temp_csv):
-                try:
-                    os.remove(temp_csv)
-                except:
-                    pass
-        threading.Thread(target=cleanup_temp).start()
 
 # Register cleanup function to run on server shutdown
 atexit.register(cleanup_temp_files)

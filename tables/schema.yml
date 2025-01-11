@@ -29,3 +29,33 @@ collections:
       frame_extraction:
         format: "jpeg"
         quality: 90 
+  ave:
+    table_file: "tables/ave.csv"
+    content_dir: "contents/ave"
+    fields:
+      - name: "id"
+        type: "uuid"
+        primary_key: true
+        description: "64-bit UUID generated from content hash"
+      - name: "episode"
+        type: "integer"
+        index: true
+        description: "Episode number"
+      - name: "timestamp"
+        type: "integer"
+        index: true
+        description: "Timestamp in seconds"
+      - name: "content"
+        type: "text"
+        index: true
+        description: "Text content/dialogue"
+      - name: "tags"
+        type: "text[]"
+        index: true
+        description: "Associated tags"
+    video_format:
+      extension: "mp4"
+      naming_pattern: "{episode}.mp4"
+      frame_extraction:
+        format: "jpeg"
+        quality: 90 
