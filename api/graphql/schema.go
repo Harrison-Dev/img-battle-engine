@@ -59,13 +59,15 @@ func NewSchema(searchEngine search.SearchEngine) (graphql.Schema, error) {
 							},
 							Resolve: func(p graphql.ResolveParams) (interface{}, error) {
 								query := p.Args["query"].(string)
-								collection := ""
-								if col, ok := p.Args["collection"].(string); ok {
-									collection = col
-								}
 								limit := p.Args["limit"].(int)
 
-								return searchEngine.Search(query, collection, limit)
+								// 檢查是否指定了集合
+								if col, ok := p.Args["collection"].(string); ok && col != "" && col != "all" {
+									return searchEngine.Search(query, col, limit)
+								}
+
+								// 如果沒有指定集合或指定為"all"，則搜索所有集合
+								return searchEngine.SearchAll(query, limit)
 							},
 						},
 					},

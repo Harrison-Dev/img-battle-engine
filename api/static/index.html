@@ -303,6 +303,11 @@
                 const collectionSelect = document.getElementById('collection-select');
 
                 collectionSelect.innerHTML = '';
+                const allOption = document.createElement('option');
+                allOption.value = 'all';
+                allOption.textContent = '全部群組';
+                collectionSelect.appendChild(allOption);
+
                 data.collections.forEach(collection => {
                     const option = document.createElement('option');
                     option.value = collection;
@@ -393,6 +398,7 @@
                             <div><i class="fas fa-star"></i> 相關度: ${result.score.toFixed(2)}</div>
                             <div><i class="fas fa-clock"></i> 時間: ${result.startTime} - ${result.endTime}</div>
                             <div><i class="fas fa-film"></i> 集數: ${result.episode}</div>
+                            <div><i class="fas fa-layer-group"></i> 群組: ${result.collection}</div>
                             <div class="text-muted"><i class="fas fa-hashtag"></i> ${result.id}</div>
                         </div>
                     </div>

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"sort"
 	"strconv"
 
 	"github.com/blevesearch/bleve/v2"
@@ -28,6 +29,7 @@ type SearchResult struct {
 // SearchEngine 定義搜索引擎接口
 type SearchEngine interface {
 	Search(query string, collection string, limit int) ([]SearchResult, error)
+	SearchAll(query string, limit int) ([]SearchResult, error)
 	Index(collection string, data []SearchResult) error
 	LoadCSV(collection string, csvPath string) error
 }
@@ -282,4 +284,30 @@ func (e *BleveSearchEngine) Index(collection string, data []SearchResult) error 
 // GetData 返回內部數據存儲
 func (e *BleveSearchEngine) GetData() map[string]map[string]SearchResult {
 	return e.data
+}
+
+// SearchAll 在所有集合中搜索
+func (e *BleveSearchEngine) SearchAll(query string, limit int) ([]SearchResult, error) {
+	var allResults []SearchResult
+
+	// 在每個集合中搜索
+	for collection := range e.indices {
+		results, err := e.Search(query, collection, limit)
+		if err != nil {
+			return nil, fmt.Errorf("error searching collection %s: %v", collection, err)
+		}
+		allResults = append(allResults, results...)
+	}
+
+	// 按分數排序
+	sort.Slice(allResults, func(i, j int) bool {
+		return allResults[i].Score > allResults[j].Score
+	})
+
+	// 限制結果數量
+	if len(allResults) > limit {
+		allResults = allResults[:limit]
+	}
+
+	return allResults, nil
 }
