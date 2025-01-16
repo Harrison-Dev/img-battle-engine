@@ -386,7 +386,7 @@
                             <div class="spinner-border spinner-border-sm" role="status"></div>
                             <span class="ms-2">載入中...</span>
                         </div>
-                        <img src="/frame/${result.id}" 
+                        <img src="/frame/${result.id}.jpg" 
                             alt="Frame ${result.id}" 
                             loading="lazy" 
                             onload="imageLoaded(this)"
@@ -431,7 +431,7 @@
         function showPreview(id) {
             const modal = document.getElementById('preview-modal');
             const img = document.getElementById('preview-image');
-            img.src = `/frame/${id}`;
+            img.src = `/frame/${id}.jpg`;
             modal.style.display = 'block';
             currentRotation = 0;
             isZoomed = false;

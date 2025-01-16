@@ -140,7 +140,8 @@ func handleFrame(c *gin.Context) {
 	videoPath := filepath.Join(collectionConfig.ContentDir, videoFileName)
 
 	// 生成穩定的 ETag
-	etag := fmt.Sprintf("%s-%d-%d", id, targetResult.StartTime, targetResult.Episode)
+	// etag := fmt.Sprintf("%s-%d-%d", id, targetResult.StartTime, targetResult.Episode)
+	etag := fmt.Sprintf("%s", id)
 	lastModified := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
 	
 	// 檢查 If-None-Match 頭
@@ -174,6 +175,7 @@ func handleFrame(c *gin.Context) {
 	c.Header("CDN-Cache-Control", "max-age=604800") // 特別告訴 CDN 可以緩存
 	c.Header("Surrogate-Control", "max-age=604800") // 另一種 CDN 緩存控制頭
 	c.Header("Age", "0") // 告訴 CDN 這是新鮮的內容
+	c.Header("Content-Type", "image/jpeg") // 明確設置 Content-Type
 
 	c.Data(http.StatusOK, "image/jpeg", frame)
 }
