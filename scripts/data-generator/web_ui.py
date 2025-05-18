@@ -132,8 +132,6 @@ def get_ffmpeg_path():
     possible_paths = [
         'ffmpeg',  # If in PATH
         'ffmpeg.exe',
-        r'C:\Users\haoc0\Downloads\ffmpeg-7.1-essentials_build\bin\ffmpeg.exe',  # User's FFmpeg location
-        r'C:\ffmpeg\bin\ffmpeg.exe',
         os.path.join(os.path.dirname(__file__), 'ffmpeg.exe'),
         os.path.join(os.path.dirname(__file__), 'bin', 'ffmpeg.exe')
     ]
