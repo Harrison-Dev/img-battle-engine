@@ -1,140 +1,74 @@
+#!/usr/bin/env python3
 import os
 import sys
 import subprocess
-from urllib.parse import urlparse, parse_qs
+import shutil
 
-def get_you_get_path():
-    """Get the you-get executable path based on the platform."""
-    venv_dir = os.path.dirname(os.path.dirname(sys.executable))
-    if sys.platform == 'win32':
-        return os.path.join(venv_dir, 'Scripts', 'you-get.exe')
-    return os.path.join(venv_dir, 'bin', 'you-get')
-
-YOU_GET_PATH = "you-get" # already in PATH
+YT_DLP_PATH = "yt-dlp"  # 確保已安裝並在 PATH 裡
 
 def ensure_downloads_dir():
-    """Ensure downloads directory exists and return its path."""
+    """確保 downloads 目錄存在，並回傳其絕對路徑。"""
     script_dir = os.path.dirname(os.path.abspath(__file__))
-    downloads_dir = os.path.join(script_dir, 'downloads')
-    if not os.path.exists(downloads_dir):
-        os.makedirs(downloads_dir)
-    return downloads_dir
+    downloads = os.path.join(script_dir, 'downloads')
+    os.makedirs(downloads, exist_ok=True)
+    return downloads
 
 def run_subprocess(cmd, **kwargs):
-    """Run a subprocess command with proper encoding handling."""
-    try:
-        # Force UTF-8 encoding for both stdout and stderr
-        kwargs.update({
-            'encoding': 'utf-8',
-            'errors': 'replace',
-            'env': {**os.environ, 'PYTHONIOENCODING': 'utf-8'}
-        })
-        return subprocess.run(cmd, **kwargs)
-    except subprocess.CalledProcessError as e:
-        print(f"Command failed with exit code {e.returncode}")
-        if e.stdout:
-            print("stdout:", e.stdout)
-        if e.stderr:
-            print("stderr:", e.stderr)
-        raise
-    except Exception as e:
-        print(f"An unexpected error occurred: {str(e)}")
-        raise
+    """執行 subprocess，強制 UTF-8 編碼輸出。"""
+    kwargs.update({
+        'encoding': 'utf-8',
+        'errors': 'replace',
+        'env': {**os.environ, 'PYTHONIOENCODING': 'utf-8'}
+    })
+    result = subprocess.run(cmd, **kwargs)
+    if result.returncode != 0:
+        raise RuntimeError(f"命令失敗：{' '.join(cmd)}\n{result.stderr}")
+    return result
 
-def download_video(video_url):
-    """Download a single video."""
-    downloads_dir = ensure_downloads_dir()
-    original_dir = os.getcwd()
-    
-    try:
-        # Change to downloads directory
-        os.chdir(downloads_dir)
-        
-        # First, check available formats
-        print("Checking available formats...")
-        result = run_subprocess(
-            [YOU_GET_PATH, '-i', video_url],
-            capture_output=True,
-            text=True
-        )
-        if result.returncode != 0:
-            raise Exception(f"Failed to get video info: {result.stderr}")
-        print(result.stdout)
-        
-        # Download video
-        print("\nStarting download...")
-        result = run_subprocess(
-            [YOU_GET_PATH, video_url],
-            capture_output=True,
-            text=True
-        )
-        if result.returncode != 0:
-            raise Exception(f"Failed to download video: {result.stderr}")
-        print(result.stdout)
-        
-        print("Download completed!")
-        
-    except Exception as e:
-        print(f"An error occurred: {str(e)}")
-        raise
-    
-    finally:
-        # Always return to original directory
-        os.chdir(original_dir)
+def download_video(url):
+    downloads = ensure_downloads_dir()
+    print(f"→ 下載到：{downloads}")
+    # 列出可用格式
+    info = run_subprocess([YT_DLP_PATH, '-F', url, '--no-playlist'], capture_output=True)
+    print(info.stdout)
+    # 只抓最佳 MP4 影片（無音軌）
+    dl = run_subprocess([
+        YT_DLP_PATH,
+        '--no-playlist',
+        '-f', 'bestvideo[ext=mp4]',
+        '-o', os.path.join(downloads, '%(title)s.%(ext)s'),
+        url
+    ], capture_output=True)
+    print(dl.stdout)
+    print("影片下載完成！")
 
-def download_playlist(playlist_url):
-    """Download all videos in a playlist."""
-    downloads_dir = ensure_downloads_dir()
-    original_dir = os.getcwd()
-    
-    try:
-        # Change to downloads directory
-        os.chdir(downloads_dir)
-        
-        # First, check available formats
-        print("Checking available formats...")
-        result = run_subprocess(
-            [YOU_GET_PATH, '-i', playlist_url],
-            capture_output=True,
-            text=True
-        )
-        if result.returncode != 0:
-            raise Exception(f"Failed to get playlist info: {result.stderr}")
-        print(result.stdout)
-        
-        # Download playlist videos
-        print("\nStarting downloads...")
-        result = run_subprocess(
-            [YOU_GET_PATH, '--playlist', playlist_url],
-            capture_output=True,
-            text=True
-        )
-        if result.returncode != 0:
-            raise Exception(f"Failed to download playlist: {result.stderr}")
-        print(result.stdout)
-        
-        print("Download completed!")
-        
-    except Exception as e:
-        print(f"An error occurred: {str(e)}")
-        raise
-    
-    finally:
-        # Always return to original directory
-        os.chdir(original_dir)
+def download_playlist(url):
+    downloads = ensure_downloads_dir()
+    print(f"→ 下載到：{downloads}")
+    # 列出可用格式
+    info = run_subprocess([YT_DLP_PATH, '-F', url, '--yes-playlist'], capture_output=True)
+    print(info.stdout)
+    # 只抓最佳 MP4 影片（無音軌）
+    dl = run_subprocess([
+        YT_DLP_PATH,
+        '--yes-playlist',
+        '-f', 'bestvideo[ext=mp4]',
+        '-o', os.path.join(downloads, '%(playlist_index)03d-%(title)s.%(ext)s'),
+        url
+    ], capture_output=True)
+    print(dl.stdout)
+    print("清單下載完成！")
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     if len(sys.argv) != 2:
         print("Usage: python source_dl.py <video_or_playlist_url>")
         sys.exit(1)
-    
-    if not os.path.exists(YOU_GET_PATH):
-        print(f"Error: you-get not found at {YOU_GET_PATH}")
-        print("Please ensure you-get is installed in your virtual environment.")
+    if shutil.which(YT_DLP_PATH) is None:
+        print(f"Error: `{YT_DLP_PATH}` not found. Please install yt-dlp.")
         sys.exit(1)
-        
-    url = sys.argv[1]
-    if 'playlist' in url or 'list=' in url:
-        download_playlist(url)
+
+    target = sys.argv[1]
+    if 'playlist' in target or 'list=' in target:
+        download_playlist(target)
     else:
-        download_video(url) 
+        download_video(target)
