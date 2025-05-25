@@ -2,6 +2,7 @@
 
 > 此專案使用 [Cursor](https://cursor.sh/) AI輔助開發
 
+https://img-battle-engine.harrison-chen.dev/
 高性能視頻幀搜索和提取服務，專門用於快速檢索視頻中的特定場景。
 
 ## 主要功能
