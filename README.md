@@ -1,80 +1,87 @@
 # Image Battle Engine 圖戰引擎
 
-> 此專案使用 [Cursor](https://cursor.sh/) AI輔助開發
+> 此專案使用 [Cursor](https://cursor.sh/) AI 輔助開發
 
-https://img-battle-engine.harrison-chen.dev/
-高性能視頻幀搜索和提取服務，專門用於快速檢索視頻中的特定場景。
+[https://img-battle-engine.harrison-chen.dev/](https://img-battle-engine.harrison-chen.dev/)
+
+高效能影片影格搜尋和擷取服務，專門用於快速檢索影片中的特定場景。
 
 ## 主要功能
 
-- 🔍 高效全文搜索
-  - 支持中文分詞
-  - 模糊搜索
-  - 相關度排序
-  - 可自定義結果數量
+* 🔍 高效全文搜尋
 
-- 🖼️ 智能幀提取
-  - 精確時間點定位
-  - 高質量圖片輸出
-  - 支持多種視頻格式
+  * 支援中文分詞
+  * 模糊搜尋
+  * 相關度排序
+  * 可自訂結果數量
 
-- 📦 數據管理
-  - CSV 數據導入
-  - 預建索引機制
-  - 內存緩存層
+* 🖼️ 智能影格擷取
 
-## 技術棧
+  * 精準時間點定位
+  * 高品質圖片輸出
+  * 支援多種影片格式
 
-- [Gin](https://github.com/gin-gonic/gin) - Web框架
-- [Bleve](https://github.com/blevesearch/bleve) - 全文搜索引擎
-- [FFmpeg](https://ffmpeg.org/) - 視頻處理
-- [GraphQL](https://graphql.org/) - API查詢語言
+* 📦 資料管理
+
+  * CSV 資料匯入
+  * 預先建置索引機制
+  * 記憶體快取層
+
+## 技術堆疊
+
+* [Gin](https://github.com/gin-gonic/gin) – Web 框架
+* [Bleve](https://github.com/blevesearch/bleve) – 全文搜尋引擎
+* [FFmpeg](https://ffmpeg.org/) – 影片處理
+* [GraphQL](https://graphql.org/) – API 查詢語言
 
 ## 快速開始
 
-### 前置需求
+### 先決條件
 
-- Go 1.20+
-- FFmpeg
-- Git
+* Go 1.20+
+* FFmpeg
+* Git
 
 ### 安裝
 
 ```bash
-# 克隆倉庫
+# 分叉倉庫
 git clone git@github.com:Harrison-Dev/img-battle-engine.git
 cd img-battle-engine
 
-# 安裝依賴
+# 安裝相依套件
 go mod download
 ```
 
-### 配置
+### 設定
 
-1. 準備數據文件
-   - 在 `tables/` 目錄下放置CSV文件
-   - 在 `contents/` 目錄下放置視頻文件
-   - 確保 `tables/schema.yml` 配置正確
+1. 準備資料檔案
 
-2. CSV 格式要求
-```csv
-id,score,text,episode,start_time,end_time,start_frame,end_frame
-xxx,1.0,對話內容,1,"00:00:38,329","00:00:40,247",918,964
-```
+   * 在 `tables/` 資料夾放置 CSV 檔案
+   * 在 `contents/` 資料夾放置影片檔案
+   * 確保 `tables/schema.yml` 設定正確
 
-### 運行
+2. CSV 檔案格式要求
+
+   ```csv
+   id,score,text,episode,start_time,end_time,start_frame,end_frame
+   xxx,1.0,對話內容,1,"00:00:38,329","00:00:40,247",918,964
+   ```
+
+### 執行
 
 ```bash
 go run main.go
 ```
 
-訪問 http://localhost:8080 使用Web界面
+存取 [http://localhost:8080](http://localhost:8080) 使用網頁介面
 
-## API 使用
+## API 使用方式
 
 ### GraphQL API
 
-搜索接口：
+搜尋介面：
+
 ```graphql
 query Search($query: String!, $collection: String, $limit: Int) {
     search(query: $query, collection: $collection, limit: $limit) {
@@ -91,35 +98,36 @@ query Search($query: String!, $collection: String, $limit: Int) {
 
 ### REST API
 
-獲取幀圖片：
+取得影格圖片：
+
 ```
 GET /frame/:id
 ```
 
-## 項目結構
+## 專案結構
 
 ```
 .
-├── api/            # API處理器和路由
-│   ├── graphql/    # GraphQL相關
-│   └── static/     # 靜態文件
+├── api/            # API 處理器與路由
+│   ├── graphql/    # GraphQL 相關
+│   └── static/     # 靜態檔案
 ├── core/           # 核心業務邏輯
-│   ├── search/     # 搜索引擎
-│   └── extract/    # 幀提取
-├── config/         # 配置文件
-├── tables/         # 數據文件
-└── contents/       # 視頻文件
+│   ├── search/     # 搜尋引擎
+│   └── extract/    # 影格擷取
+├── config/         # 設定檔
+├── tables/         # 資料檔案
+└── contents/       # 影片檔案
 ```
 
 ## 開發
 
-### 運行測試
+### 執行測試
 
 ```bash
 go test ./... -v
 ```
 
-### 代碼風格
+### 程式碼風格
 
 ```bash
 go fmt ./...
@@ -129,11 +137,11 @@ golangci-lint run
 ## 貢獻指南
 
 1. Fork 本倉庫
-2. 創建特性分支 (`git checkout -b feature/AmazingFeature`)
-3. 提交更改 (`git commit -m 'Add some AmazingFeature'`)
-4. 推送到分支 (`git push origin feature/AmazingFeature`)
-5. 開啟 Pull Request
+2. 建立功能分支 (`git checkout -b feature/AmazingFeature`)
+3. 送出變更 (`git commit -m 'Add some AmazingFeature'`)
+4. 推送至分支 (`git push origin feature/AmazingFeature`)
+5. 提出 Pull Request
 
-## 授權協議
+## 授權條款
 
-本項目採用 MIT 授權協議 - 查看 [LICENSE](LICENSE) 文件了解更多細節
+本專案採用 MIT 授權條款 — 查看 [LICENSE](LICENSE) 了解更多細節。
